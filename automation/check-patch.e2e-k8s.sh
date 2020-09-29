@@ -8,17 +8,21 @@
 # automation/check-patch.e2e-k8s.sh
 
 teardown() {
+    ./cluster/kubectl.sh get pod -n nmstate -o wide > $ARTIFACTS/kubernetes-nmstate.pod.list.txt || true
+    ./cluster/kubectl.sh logs --tail=1000 -n nmstate -l app=kubernetes-nmstate > $ARTIFACTS/kubernetes-nmstate.pod.logs || true
     make cluster-down
-    cp $(find . -name "*junit*.xml") $ARTIFACTS
     # Don't fail if there is no logs
-    cp ${E2E_LOGS}/*.log ${ARTIFACTS} || true
+    cp ${E2E_LOGS}/handler/*.log ${ARTIFACTS} || true
 }
 
 main() {
-    export KUBEVIRT_PROVIDER='k8s-1.17'
+    export KUBEVIRT_PROVIDER='k8s-1.19'
     export KUBEVIRT_NUM_NODES=3 # 1 master, 2 workers
     source automation/check-patch.setup.sh
     cd ${TMP_PROJECT_PATH}
+
+    # Let's fail fast if generated files differ
+    make check-gen
 
     # Let's fail fast if it's not compiling
     make handler
@@ -27,7 +31,7 @@ main() {
     make cluster-up
     trap teardown EXIT SIGINT SIGTERM SIGSTOP
     make cluster-sync
-    make E2E_TEST_TIMEOUT=1h E2E_TEST_ARGS="-ginkgo.noColor " test/e2e
+    make E2E_TEST_TIMEOUT=1h E2E_TEST_ARGS="-ginkgo.noColor --junit-output=$ARTIFACTS/junit.functest.xml" test-e2e-handler
 }
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && main "$@"

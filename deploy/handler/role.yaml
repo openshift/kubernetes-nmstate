@@ -15,10 +15,32 @@ rules:
   - persistentvolumeclaims
   - events
   - configmaps
-  - secrets
   - pods
   verbs:
-  - '*'
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - get
+  - list
+  - create
+  - update
 - apiGroups:
   - apps
   resources:
@@ -52,16 +74,10 @@ metadata:
   namespace: {{ .HandlerNamespace }}
 rules:
 - apiGroups:
-  - certificates.k8s.io
-  resources:
-  - certificatesigningrequests
-  - certificatesigningrequests/approval
-  verbs:
-  - "*"
-- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
   verbs:
   - '*'
 - apiGroups:
@@ -77,8 +93,16 @@ rules:
   - nodes
   - namespaces
   verbs:
-  - get
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
   - list
+  - get
+  - create
+  - update
   - watch
 - apiGroups:
   - ""

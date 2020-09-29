@@ -1,34 +1,19 @@
 package nodenetworkconfigurationpolicy
 
 import (
-	"fmt"
-	"os"
-	"strconv"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/pkg/errors"
 
-	"sigs.k8s.io/controller-runtime/pkg/manager"
-
+	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
-	"github.com/qinqon/kube-admission-webhook/pkg/webhook/server/certificate"
 )
 
 const (
 	webhookName = "nmstate"
 )
 
-func Add(mgr manager.Manager) error {
-
-	webhookPortString, isSet := os.LookupEnv("WEBHOOK_PORT")
-	if !isSet || len(webhookPortString) == 0 {
-		return fmt.Errorf("WEBHOOK_PORT env var is mandatory")
-	}
-
-	var err error
-	webhookPort, err := strconv.Atoi(webhookPortString)
-	if err != nil {
-		return errors.Wrap(err, "WEBHOOK_PORT env var has bad format")
-	}
+func Add(mgr manager.Manager, o certificate.Options) error {
 
 	// We need two hooks, the update of nncp and nncp/status (it's a subresource) happends
 	// at different times, also if you modify status at nncp webhook it does not modify it
@@ -37,13 +22,15 @@ func Add(mgr manager.Manager) error {
 	// 1.- User changes nncp desiredState so it triggers deleteConditionsHook()
 	// 2.- Since we have delete the condition the status-mutate webhook get called and
 	//     there we set conditions to Unknown this final result will be updated.
-	server := webhookserver.New(mgr, webhookName, certificate.MutatingWebhook,
-		webhookserver.WithPort(webhookPort),
+	server, err := webhookserver.New(mgr.GetClient(), o,
 		webhookserver.WithHook("/nodenetworkconfigurationpolicies-mutate", deleteConditionsHook()),
 		webhookserver.WithHook("/nodenetworkconfigurationpolicies-status-mutate", setConditionsUnknownHook()),
 		webhookserver.WithHook("/nodenetworkconfigurationpolicies-timestamp-mutate", setTimestampAnnotationHook()),
 	)
-	return add(mgr, server)
+	if err != nil {
+		return errors.Wrap(err, "failed creating new webhook server")
+	}
+	return server.Add(mgr)
 }
 
 // add adds a new Webhook to mgr with r as the webhook.Server

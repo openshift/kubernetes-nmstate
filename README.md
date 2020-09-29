@@ -1,5 +1,7 @@
 # kubernetes-nmstate
 
+<img src="logo/fullcolor.png" alias="project logo" />
+
 [keɪ ɛn ɛm steɪt] Declarative node network configuration driven through Kubernetes API.
 
 # How it works
@@ -9,7 +11,7 @@ configuration on cluster nodes and to report back their current state.
 Both the configuration and reporting is controlled via Kubernetes objects.
 
 ```yaml
-apiVersion: nmstate.io/v1alpha1
+apiVersion: nmstate.io/v1beta1
 kind: NodeNetworkConfigurationPolicy
 metadata:
   name: br1-eth0

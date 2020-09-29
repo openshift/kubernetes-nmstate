@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -12,29 +11,24 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
+	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/rest"
 
 	"github.com/nmstate/kubernetes-nmstate/pkg/apis"
 	"github.com/nmstate/kubernetes-nmstate/pkg/controller"
 	"github.com/nmstate/kubernetes-nmstate/pkg/environment"
 	"github.com/nmstate/kubernetes-nmstate/pkg/webhook"
-	"github.com/nmstate/kubernetes-nmstate/version"
 
 	"github.com/nightlyone/lockfile"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
-	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
-	"github.com/operator-framework/operator-sdk/pkg/metrics"
-	"github.com/operator-framework/operator-sdk/pkg/restmapper"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
@@ -46,16 +40,9 @@ type ProfilerConfig struct {
 	ProfilerPort   string `envconfig:"PROFILER_PORT" default:"6060"`
 }
 
-// Change below variables to serve metrics on different host or port.
-var (
-	metricsHost               = "0.0.0.0"
-	metricsPort         int32 = 8383
-	operatorMetricsPort int32 = 8686
-)
 var log = logf.Log.WithName("cmd")
 
 func printVersion() {
-	log.Info(fmt.Sprintf("Operator Version: %s", version.Version))
 	log.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
 	log.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
 	log.Info(fmt.Sprintf("Version of operator-sdk: %v", sdkVersion.Version))
@@ -93,9 +80,10 @@ func main() {
 
 	printVersion()
 
-	if !environment.IsOperator() {
-		// Take exclusive instance lock, we need that to make sure that
-		// we don't have more than one working instance of k8s-nmstate
+	// Lock only for handler, we can run old and new version of
+	// webhook without problems, policy status will be updated
+	// by multiple instances.
+	if environment.IsHandler() {
 		handlerLock, err := lockHandler()
 		if err != nil {
 			log.Error(err, "Failed to run lockHandler")
@@ -118,14 +106,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.TODO()
+	mgrOptions := manager.Options{
+		Namespace:      namespace,
+		MapperProvider: apiutil.NewDiscoveryRESTMapper,
+	}
+
+	// We need to add LeaerElection for the webhook
+	// cert-manager
+	if environment.IsWebhook() {
+		mgrOptions.LeaderElection = true
+		mgrOptions.LeaderElectionID = "nmstate-webhook-lock"
+		mgrOptions.LeaderElectionNamespace = namespace
+	}
 
 	// Create a new Cmd to provide shared dependencies and start components
-	mgr, err := manager.New(cfg, manager.Options{
-		Namespace:          namespace,
-		MapperProvider:     restmapper.NewDynamicRESTMapper,
-		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
-	})
+	mgr, err := manager.New(cfg, mgrOptions)
 	if err != nil {
 		log.Error(err, "")
 		os.Exit(1)
@@ -139,45 +134,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup all Controllers
-	if err := controller.AddToManager(mgr); err != nil {
-		log.Error(err, "Cannot initialize controller")
-		os.Exit(1)
-	}
+	// Runs only webhook controllers if it's specified
+	if environment.IsWebhook() {
 
-	// Setup webhook on master only
-	if _, runWebhookServer := os.LookupEnv("RUN_WEBHOOK_SERVER"); runWebhookServer {
-		if err := webhook.AddToManager(mgr); err != nil {
+		webhookOpts := certificate.Options{
+			Namespace:   os.Getenv("POD_NAMESPACE"),
+			WebhookName: "nmstate",
+			WebhookType: certificate.MutatingWebhook,
+		}
+
+		webhookOpts.CARotateInterval, err = environment.LookupAsDuration("CA_ROTATE_INTERVAL")
+		if err != nil {
+			log.Error(err, "Failed retrieving ca rotate interval")
+			os.Exit(1)
+		}
+
+		webhookOpts.CAOverlapInterval, err = environment.LookupAsDuration("CA_OVERLAP_INTERVAL")
+		if err != nil {
+			log.Error(err, "Failed retrieving ca overlap interval")
+			os.Exit(1)
+		}
+
+		webhookOpts.CertRotateInterval, err = environment.LookupAsDuration("CERT_ROTATE_INTERVAL")
+		if err != nil {
+			log.Error(err, "Failed retrieving cert rotate interval")
+			os.Exit(1)
+		}
+
+		if err := webhook.AddToManager(mgr, webhookOpts); err != nil {
 			log.Error(err, "Cannot initialize webhook")
 			os.Exit(1)
 		}
-	}
-
-	if err = serveCRMetrics(cfg); err != nil {
-		log.Info("Could not generate and serve custom resource metrics", "error", err.Error())
-	}
-
-	// Add to the below struct any other metrics ports you want to expose.
-	servicePorts := []v1.ServicePort{
-		{Port: metricsPort, Name: metrics.OperatorPortName, Protocol: v1.ProtocolTCP, TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: metricsPort}},
-		{Port: operatorMetricsPort, Name: metrics.CRPortName, Protocol: v1.ProtocolTCP, TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: operatorMetricsPort}},
-	}
-	// Create Service object to expose the metrics port(s).
-	service, err := metrics.CreateMetricsService(ctx, cfg, servicePorts)
-	if err != nil {
-		log.Info("Could not create metrics Service", "error", err.Error())
-	}
-
-	// CreateServiceMonitors will automatically create the prometheus-operator ServiceMonitor resources
-	// necessary to configure Prometheus to scrape metrics from this operator.
-	services := []*v1.Service{service}
-	_, err = metrics.CreateServiceMonitors(cfg, namespace, services)
-	if err != nil {
-		log.Info("Could not create ServiceMonitor object", "error", err.Error())
-		// If this operator is deployed to a cluster without the prometheus-operator running, it will return
-		// ErrServiceMonitorNotPresent, which can be used to safely skip ServiceMonitor creation.
-		if err == metrics.ErrServiceMonitorNotPresent {
-			log.Info("Install prometheus-operator in your cluster to create ServiceMonitor objects", "error", err.Error())
+	} else {
+		// Setup all Controllers
+		if err := controller.AddToManager(mgr); err != nil {
+			log.Error(err, "Cannot initialize controller")
+			os.Exit(1)
 		}
 	}
 
@@ -189,28 +181,6 @@ func main() {
 		log.Error(err, "Manager exited non-zero")
 		os.Exit(1)
 	}
-}
-
-// serveCRMetrics gets the Operator/CustomResource GVKs and generates metrics based on those types.
-// It serves those metrics on "http://metricsHost:operatorMetricsPort".
-func serveCRMetrics(cfg *rest.Config) error {
-	// Below function returns filtered operator/CustomResource specific GVKs.
-	// For more control override the below GVK list with your own custom logic.
-	filteredGVK, err := k8sutil.GetGVKsFromAddToScheme(apis.AddToScheme)
-	if err != nil {
-		return err
-	}
-	// The operator is cluster scoped so it does not have namespace
-	operatorNs := ""
-
-	// To generate metrics in other namespaces, add the values below.
-	ns := []string{operatorNs}
-	// Generate and serve custom resource specific metrics.
-	err = kubemetrics.GenerateAndServeCRMetrics(cfg, ns, filteredGVK, metricsHost, operatorMetricsPort)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // Start profiler on given port if ENABLE_PROFILER is True

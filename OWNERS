@@ -1,6 +1,7 @@
 approvers:
   - phoracek
   - qinqon
+  - bcrochet
 reviewers:
   - phoracek
   - qinqon
@@ -8,8 +9,11 @@ reviewers:
   - AlonaKaplan
   - eranco74
   - tsorya
+  - bcrochet
+  - yboaron
 
 # Bugzilla info;
 component: Networking
 subcomponent: kubernetes-nmstate-operator
 subcomponent: kubernetes-nmstate
+

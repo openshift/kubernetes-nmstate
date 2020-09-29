@@ -27,8 +27,8 @@ function clean() {
     fi
 
     # Delete the CR only if the CRD is installed otherwise it will fail
-    if $kubectl get crds nmstate.io.nmstate; then
-        $kubectl delete --ignore-not-found -f deploy/crds/nmstate.io_v1alpha1_nmstate_cr.yaml
+    if $kubectl get crds nmstates.nmstate.io; then
+        $kubectl delete --ignore-not-found -f deploy/crds/nmstate.io_v1beta1_nmstate_cr.yaml
     fi
     $kubectl delete --ignore-not-found -f $MANIFESTS_DIR/operator.yaml
     $kubectl delete --ignore-not-found -f deploy/crds/nmstate.io_nodenetworkconfigurationenactments_crd.yaml
@@ -55,11 +55,21 @@ function isHandlerRemoved {
     isRemoved daemonset ${HANDLER_NAMESPACE} app=kubernetes-nmstate
 }
 
+function isWebhookRemoved {
+    isRemoved deployment ${HANDLER_NAMESPACE} app=kubernetes-nmstate
+}
+
 function wait_removed() {
     if ! eventually isHandlerRemoved; then
         echo "Handler hasn't been removed within the given timeout"
         exit 1
     fi
+
+    if ! eventually isWebhookRemoved; then
+        echo "Webhook hasn't been removed within the given timeout"
+        exit 1
+    fi
+
 }
 
 clean
