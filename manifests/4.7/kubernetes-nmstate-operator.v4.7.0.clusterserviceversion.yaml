@@ -83,6 +83,7 @@ spec:
         - apiGroups:
           - ""
           resources:
+          - services
           - serviceaccounts
           - configmaps
           - namespaces
