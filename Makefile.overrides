@@ -1,0 +1,4 @@
+# OpenShift-specific targets and defaults, included after the upstream Makefile.
+
+test-e2e-ocp:
+	./hack/ocp-e2e-tests.sh
