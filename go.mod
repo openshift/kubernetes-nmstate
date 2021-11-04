@@ -7,7 +7,6 @@ require (
 	github.com/evanphx/json-patch v4.11.0+incompatible
 	github.com/github-release/github-release v0.10.0
 	github.com/go-logr/logr v0.4.0
-	github.com/gobwas/glob v0.2.3
 	github.com/gofrs/flock v0.8.0
 	github.com/gorilla/mux v1.7.4 // indirect
 	github.com/hashicorp/go-multierror v1.1.0 // indirect
@@ -19,9 +18,11 @@ require (
 	github.com/operator-framework/operator-registry v1.17.0
 	github.com/phoracek/networkmanager-go v0.1.0
 	github.com/pkg/errors v0.9.1
-	github.com/qinqon/kube-admission-webhook v0.16.0
+	github.com/qinqon/kube-admission-webhook v0.17.0
+	github.com/spf13/pflag v1.0.5
 	github.com/tidwall/gjson v1.8.0
 	github.com/tidwall/sjson v1.1.7
+	go.uber.org/zap v1.17.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.21.1
 	k8s.io/apimachinery v0.21.1
@@ -30,7 +31,7 @@ require (
 	k8s.io/release v0.9.0
 	kubevirt.io/qe-tools v0.1.7
 	sigs.k8s.io/controller-runtime v0.9.0
-	sigs.k8s.io/controller-tools v0.5.0
+	sigs.k8s.io/controller-tools v0.6.0
 	sigs.k8s.io/yaml v1.2.0
 )
 
