@@ -36,7 +36,7 @@ const TestPolicy = "test-policy"
 
 var (
 	bridgeCounter  = 0
-	bondConunter   = 0
+	bondCounter    = 0
 	maxUnavailable = environment.GetVarWithDefault("NMSTATE_MAX_UNAVAILABLE", nmstatenode.DEFAULT_MAXUNAVAILABLE)
 )
 
@@ -445,8 +445,8 @@ func nextBridge() string {
 }
 
 func nextBond() string {
-	bridgeCounter++
-	return fmt.Sprintf("bond%d", bondConunter)
+	bondCounter++
+	return fmt.Sprintf("bond%d", bondCounter)
 }
 
 func currentStateJSON(node string) []byte {
