@@ -4,14 +4,14 @@ approvers:
   - rhrazdil
   - cybertron
   - yboaron
-  - celebdor
+  - creydr
 reviewers:
   - phoracek
   - qinqon
   - yboaron
   - RamLavi
   - rhrazdil
-  - cybertron
+  - creydr
 
 # Bugzilla info;
 component: Networking
