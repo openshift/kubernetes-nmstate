@@ -1,3 +1,20 @@
+/*
+Copyright The Kubernetes NMState Authors.
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package operator
 
 import (
@@ -92,7 +109,14 @@ var _ = Describe("NMState operator", func() {
 
 func installOperator(operator operatorTestData) error {
 	By(fmt.Sprintf("Creating NMState operator with namespace '%s'", operator.ns))
-	_, err := cmd.Run("make", false, fmt.Sprintf("OPERATOR_NAMESPACE=%s", operator.ns), fmt.Sprintf("HANDLER_NAMESPACE=%s", operator.ns), "manifests")
+	_, err := cmd.Run(
+		"make",
+		false,
+		fmt.Sprintf("OPERATOR_NAMESPACE=%s", operator.ns),
+		fmt.Sprintf("HANDLER_NAMESPACE=%s", operator.ns),
+		"IMAGE_REGISTRY=registry:5000",
+		"manifests",
+	)
 	Expect(err).ToNot(HaveOccurred())
 
 	manifestsDir := "build/_output/manifests/"
@@ -101,8 +125,6 @@ func installOperator(operator operatorTestData) error {
 		_, err = cmd.Kubectl("apply", "-f", manifestsDir+manifest)
 		Expect(err).ToNot(HaveOccurred())
 	}
-	cmd.Kubectl("apply", "-f", fmt.Sprintf("%s/scc.yaml", manifestsDir)) //ignore the error to be able to run the test against none OCP clusters as well
-
 	deployment.GetEventually(types.NamespacedName{Namespace: operator.ns, Name: "nmstate-operator"}).Should(deployment.BeReady())
 
 	return nil

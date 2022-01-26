@@ -1,3 +1,20 @@
+/*
+Copyright The Kubernetes NMState Authors.
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package policyconditions
 
 import (
@@ -133,9 +150,13 @@ func update(apiWriter client.Client, apiReader client.Reader, policyReader clien
 		// Let's get conditions with true status count filtered by policy generation
 		enactmentsCountByCondition := enactmentconditions.Count(enactments, policy.Generation)
 
-		numberOfFinishedEnactments := enactmentsCountByCondition.Available() + enactmentsCountByCondition.Failed() + enactmentsCountByCondition.Aborted()
+		numberOfFinishedEnactments := enactmentsCountByCondition.Available() +
+			enactmentsCountByCondition.Failed() +
+			enactmentsCountByCondition.Aborted()
 
-		logger.Info(fmt.Sprintf("numberOfNmstateMatchingNodes: %d, enactments count: %s", numberOfNmstateMatchingNodes, enactmentsCountByCondition))
+		logger.Info(
+			fmt.Sprintf("numberOfNmstateMatchingNodes: %d, enactments count: %s", numberOfNmstateMatchingNodes, enactmentsCountByCondition),
+		)
 
 		if numberOfNmstateMatchingNodes == 0 {
 			message := "Policy does not match any node"
@@ -147,9 +168,16 @@ func update(apiWriter client.Client, apiReader client.Reader, policyReader clien
 			}
 			SetPolicyFailedToConfigure(&policy.Status.Conditions, message)
 		} else if numberOfFinishedEnactments < numberOfNmstateMatchingNodes {
-			SetPolicyProgressing(&policy.Status.Conditions, fmt.Sprintf("Policy is progressing %d/%d nodes finished", numberOfFinishedEnactments, numberOfNmstateMatchingNodes))
+			SetPolicyProgressing(
+				&policy.Status.Conditions,
+				fmt.Sprintf("Policy is progressing %d/%d nodes finished", numberOfFinishedEnactments, numberOfNmstateMatchingNodes),
+			)
 		} else {
-			message := fmt.Sprintf("%d/%d nodes successfully configured", enactmentsCountByCondition.Available(), enactmentsCountByCondition.Available())
+			message := fmt.Sprintf(
+				"%d/%d nodes successfully configured",
+				enactmentsCountByCondition.Available(),
+				enactmentsCountByCondition.Available(),
+			)
 			SetPolicySuccess(&policy.Status.Conditions, message)
 		}
 

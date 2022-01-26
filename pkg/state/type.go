@@ -1,3 +1,20 @@
+/*
+Copyright The Kubernetes NMState Authors.
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package state
 
 import (
@@ -8,13 +25,13 @@ import (
 )
 
 type rootState struct {
-	Interfaces  []interfaceState `json:"interfaces" yaml:"interfaces"`
-	Routes      *routesState     `json:"routes,omitempty" yaml:"routes,omitempty"`
+	Interfaces  []interfaceState `json:"interfaces"             yaml:"interfaces"`
+	Routes      *routesState     `json:"routes,omitempty"       yaml:"routes,omitempty"`
 	DNSResolver *dnsResolver     `json:"dns-resolver,omitempty" yaml:"dns-resolver,omitempty"`
 }
 
 type routesState struct {
-	Config  []interface{} `json:"config" yaml:"config"`
+	Config  []interface{} `json:"config"  yaml:"config"`
 	Running []interface{} `json:"running" yaml:"running"`
 }
 
@@ -24,7 +41,7 @@ type interfaceState struct {
 }
 
 type dnsResolver struct {
-	Config  *DNSResolverData `json:"config,omitempty" yaml:"config,omitempty"`
+	Config  *DNSResolverData `json:"config,omitempty"  yaml:"config,omitempty"`
 	Running *DNSResolverData `json:"running,omitempty" yaml:"running,omitempty"`
 }
 

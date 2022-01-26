@@ -65,26 +65,26 @@ linters:
       #- gocritic
       #- gocyclo
     - gofmt
-      #- goheader
-      #- goimports
+    - goheader
+    - goimports
       #- gomnd
     - goprintffuncname
       #- gosec
     - gosimple
       #- govet
     - ineffassign
-      #- lll
+    - lll
     - misspell
     - nakedret
     - noctx
     - nolintlint
     - rowserrcheck
     - staticcheck
-      #- structcheck
+    - structcheck
     - stylecheck
     - typecheck
     - unconvert
       #- unparam
-      #- unused
+    - unused
     - varcheck
     - whitespace

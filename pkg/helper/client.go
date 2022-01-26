@@ -1,3 +1,20 @@
+/*
+Copyright The Kubernetes NMState Authors.
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package helper
 
 import (
@@ -60,7 +77,13 @@ func InitializeNodeNetworkState(client client.Client, node *corev1.Node) (*nmsta
 	return &nodeNetworkState, nil
 }
 
-func CreateOrUpdateNodeNetworkState(client client.Client, node *corev1.Node, observedState shared.State, nns *nmstatev1beta1.NodeNetworkState, versions *DependencyVersions) error {
+func CreateOrUpdateNodeNetworkState(
+	client client.Client,
+	node *corev1.Node,
+	observedState shared.State,
+	nns *nmstatev1beta1.NodeNetworkState,
+	versions *DependencyVersions,
+) error {
 	if nns == nil {
 		var err error
 		nns, err = InitializeNodeNetworkState(client, node)
@@ -71,7 +94,12 @@ func CreateOrUpdateNodeNetworkState(client client.Client, node *corev1.Node, obs
 	return UpdateCurrentState(client, nns, observedState, versions)
 }
 
-func UpdateCurrentState(client client.Client, nodeNetworkState *nmstatev1beta1.NodeNetworkState, observedState shared.State, versions *DependencyVersions) error {
+func UpdateCurrentState(
+	client client.Client,
+	nodeNetworkState *nmstatev1beta1.NodeNetworkState,
+	observedState shared.State,
+	versions *DependencyVersions,
+) error {
 	if observedState.String() == nodeNetworkState.Status.CurrentState.String() {
 		log.Info("Skipping NodeNetworkState update, node network configuration not changed")
 		return nil
@@ -118,7 +146,7 @@ func rollback(client client.Client, probes []probe.Probe, cause error) error {
 	// wait for system to settle after rollback
 	probesErr := probe.Run(client, probes)
 	if probesErr != nil {
-		return errors.Wrap(errors.Wrap(err, "failed running probes after rollback"), message)
+		return errors.Wrap(errors.Wrap(probesErr, "failed running probes after rollback"), message)
 	}
 	return errors.New(message)
 }

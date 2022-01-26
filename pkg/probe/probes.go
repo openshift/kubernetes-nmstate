@@ -1,3 +1,20 @@
+/*
+Copyright The Kubernetes NMState Authors.
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package probe
 
 import (
@@ -40,7 +57,11 @@ const (
 	defaultDNSProbeTimeout    = 120 * time.Second
 	apiServerProbeTimeout     = 120 * time.Second
 	nodeReadinessProbeTimeout = 120 * time.Second
-	ProbesTotalTimeout        = defaultGwRetrieveTimeout + defaultDNSProbeTimeout + defaultDNSProbeTimeout + apiServerProbeTimeout + nodeReadinessProbeTimeout
+	ProbesTotalTimeout        = defaultGwRetrieveTimeout +
+		defaultDNSProbeTimeout +
+		defaultDNSProbeTimeout +
+		apiServerProbeTimeout +
+		nodeReadinessProbeTimeout
 )
 
 func currentStateAsGJson() (gjson.Result, error) {
@@ -256,7 +277,10 @@ func Run(client client.Client, probes []Probe) error {
 		log.Info(fmt.Sprintf("Running '%s' probe", p.name))
 		err = p.run(client, p.timeout)
 		if err != nil {
-			return errors.Wrapf(err, "failed runnig probe '%s' with after network reconfiguration -> currentState: %s", p.name, currentState)
+			return errors.Wrapf(
+				err,
+				"failed runnig probe '%s' with after network reconfiguration -> currentState: %s", p.name, currentState,
+			)
 		}
 	}
 	return nil
