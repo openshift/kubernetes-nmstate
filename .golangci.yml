@@ -65,8 +65,8 @@ linters:
       #- gocritic
       #- gocyclo
     - gofmt
-      #- goheader
-      #- goimports
+    - goheader
+    - goimports
       #- gomnd
     - goprintffuncname
       #- gosec
@@ -80,11 +80,11 @@ linters:
     - nolintlint
     - rowserrcheck
     - staticcheck
-      #- structcheck
+    - structcheck
     - stylecheck
     - typecheck
     - unconvert
       #- unparam
-      #- unused
+    - unused
     - varcheck
     - whitespace
