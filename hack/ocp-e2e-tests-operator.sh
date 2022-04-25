@@ -23,5 +23,12 @@ else
     export SSH=./hack/ssh.sh
 fi
 
+if [ "${CI}" == "true" ]; then
+    source ${SHARED_DIR}/fix-uid.sh
+    export SSH=./hack/ssh-ci.sh
+else
+    export SSH=./hack/ssh.sh
+fi
+
 make cluster-sync-operator
 make test-e2e-operator E2E_TEST_ARGS="--flake-attempts=${FLAKE_ATTEMPTS}"
