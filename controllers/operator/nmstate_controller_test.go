@@ -26,7 +26,7 @@ import (
 	goruntime "runtime"
 	"strings"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
@@ -99,7 +99,7 @@ var _ = Describe("NMState controller reconcile", func() {
 		reconciler.Scheme = s
 		reconciler.Log = ctrl.Log.WithName("controllers").WithName("NMState")
 		os.Setenv("HANDLER_NAMESPACE", handlerNamespace)
-		os.Setenv("HANDLER_IMAGE", handlerImage)
+		os.Setenv("RELATED_IMAGE_HANDLER_IMAGE", handlerImage)
 		os.Setenv("HANDLER_IMAGE_PULL_POLICY", imagePullPolicy)
 		os.Setenv("HANDLER_PREFIX", handlerPrefix)
 	})

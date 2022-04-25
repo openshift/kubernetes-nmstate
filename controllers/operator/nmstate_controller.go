@@ -150,7 +150,7 @@ func (r *NMStateReconciler) applyNamespace(instance *nmstatev1.NMState) error {
 func (r *NMStateReconciler) applyRBAC(instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 	return r.renderAndApply(instance, data, "rbac", true)
@@ -185,6 +185,10 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	if handlerTolerations == nil {
 		handlerTolerations = []corev1.Toleration{operatorExistsToleration}
 	}
+	handlerAffinity := instance.Spec.Affinity
+	if handlerAffinity == nil {
+		handlerAffinity = &corev1.Affinity{}
+	}
 
 	const (
 		webhookMinReplicas int32 = 1
@@ -201,19 +205,23 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	if infraTolerations == nil {
 		infraTolerations = []corev1.Toleration{masterExistsNoScheduleToleration}
 	}
+	infraAffinity := instance.Spec.InfraAffinity
+	if infraAffinity == nil {
+		infraAffinity = &corev1.Affinity{}
+	}
 
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 	data.Data["InfraNodeSelector"] = archAndCRInfraNodeSelector
 	data.Data["InfraTolerations"] = infraTolerations
-	data.Data["WebhookAffinity"] = corev1.Affinity{}
+	data.Data["WebhookAffinity"] = infraAffinity
 	data.Data["WebhookReplicas"] = webhookReplicas
 	data.Data["WebhookMinReplicas"] = webhookMinReplicas
 	data.Data["HandlerNodeSelector"] = archAndCRNodeSelector
 	data.Data["HandlerTolerations"] = handlerTolerations
-	data.Data["HandlerAffinity"] = corev1.Affinity{}
+	data.Data["HandlerAffinity"] = handlerAffinity
 	// TODO: This is just a place holder to make template renderer happy
 	//       proper variable has to be read from env or CR
 	data.Data["CARotateInterval"] = ""

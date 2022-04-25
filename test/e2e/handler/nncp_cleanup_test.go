@@ -21,7 +21,7 @@ import (
 	"context"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -89,7 +89,7 @@ var _ = Describe("NNCP cleanup", func() {
 				verifyEnactmentRemoved(node, 10*time.Second)
 			}
 
-			waitFotNodeToStart(restartedNode)
+			waitForNodeToStart(restartedNode)
 			verifyEnactmentRemoved(restartedNode, 4*time.Minute)
 		})
 	})
