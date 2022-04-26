@@ -59,6 +59,7 @@ type NMStateReconciler struct {
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources="*",verbs="*"
 // +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs="*"
 // +kubebuilder:rbac:groups="",resources=serviceaccounts;configmaps;namespaces,verbs="*"
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=list;get
 
 func (r *NMStateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
@@ -185,15 +186,16 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 		handlerTolerations = []corev1.Toleration{operatorExistsToleration}
 	}
 
-	const (
-		webhookMinReplicas int32 = 1
-		webhookReplicas    int32 = 2
-	)
 	archAndCRInfraNodeSelector := instance.Spec.InfraNodeSelector
 	if archAndCRInfraNodeSelector == nil {
 		archAndCRInfraNodeSelector = archOnMasterNodeSelector
 	} else {
 		archAndCRInfraNodeSelector["beta.kubernetes.io/arch"] = goruntime.GOARCH
+	}
+
+	webhookReplicaCountMin, webhookReplicaCountDesired, err := r.webhookReplicaCount(archAndCRInfraNodeSelector)
+	if err != nil {
+		return fmt.Errorf("could not get min replica count for webhook: %w", err)
 	}
 
 	infraTolerations := instance.Spec.InfraTolerations
@@ -208,8 +210,8 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	data.Data["InfraNodeSelector"] = archAndCRInfraNodeSelector
 	data.Data["InfraTolerations"] = infraTolerations
 	data.Data["WebhookAffinity"] = corev1.Affinity{}
-	data.Data["WebhookReplicas"] = webhookReplicas
-	data.Data["WebhookMinReplicas"] = webhookMinReplicas
+	data.Data["WebhookReplicas"] = webhookReplicaCountDesired
+	data.Data["WebhookMinReplicas"] = webhookReplicaCountMin
 	data.Data["HandlerNodeSelector"] = archAndCRNodeSelector
 	data.Data["HandlerTolerations"] = handlerTolerations
 	data.Data["HandlerAffinity"] = corev1.Affinity{}
@@ -222,7 +224,40 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	return r.renderAndApply(instance, data, "handler", true)
 }
 
-func (r *NMStateReconciler) renderAndApply(instance *nmstatev1.NMState, data render.RenderData, sourceDirectory string, setControllerReference bool) error {
+// webhookReplicaCount returns the number of replicas for the nmstate webhook
+// deployment based on the underlying infrastructure toplogy. It returns 2
+// values (and error):
+// 1. min. number of replicas
+// 2. number of desired replicas
+// 3. error
+func (r *NMStateReconciler) webhookReplicaCount(nodeSelector map[string]string) (int, int, error) { //nolint:gocritic
+	const (
+		multiNodeClusterReplicaCountDesired = 2
+		multiNodeClusterReplicaMinCount     = 1
+
+		singleNodeClusterReplicaCountDesired = 1
+		singleNodeClusterReplicaMinCount     = 0
+	)
+
+	nodes := corev1.NodeList{}
+	err := r.Client.List(context.TODO(), &nodes, client.MatchingLabels(nodeSelector))
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get nodes: %w", err)
+	}
+
+	if len(nodes.Items) > 1 {
+		return multiNodeClusterReplicaMinCount, multiNodeClusterReplicaCountDesired, nil
+	} else {
+		return singleNodeClusterReplicaMinCount, singleNodeClusterReplicaCountDesired, nil
+	}
+}
+
+func (r *NMStateReconciler) renderAndApply(
+	instance *nmstatev1.NMState,
+	data render.RenderData,
+	sourceDirectory string,
+	setControllerReference bool,
+) error {
 	var err error
 
 	sourceFullDirectory := filepath.Join(names.ManifestDir, "kubernetes-nmstate", sourceDirectory)
