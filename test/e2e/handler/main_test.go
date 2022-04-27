@@ -93,6 +93,7 @@ var _ = BeforeSuite(func() {
 		}
 	}
 
+	//test
 	resetDesiredStateForNodes()
 })
 
