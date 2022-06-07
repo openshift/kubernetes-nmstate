@@ -1,4 +1,4 @@
-FROM centos:8
+FROM quay.io/centos/centos:stream8
 ARG NMSTATE_COPR_REPO
 ARG NM_COPR_REPO
 RUN dnf install -b -y dnf-plugins-core && \
@@ -10,6 +10,5 @@ RUN dnf install -b -y dnf-plugins-core && \
     dnf clean all
 
 COPY build/_output/bin/manager /usr/local/bin/manager
-COPY build/bin /usr/local/bin
 
 ENTRYPOINT ["manager"]
