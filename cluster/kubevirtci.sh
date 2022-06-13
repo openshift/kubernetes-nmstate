@@ -7,7 +7,7 @@ KUBEVIRTCI_PATH="${PWD}/_kubevirtci"
 export KUBEVIRTCI_TAG='2102030941-4a15921'
 
 function kubevirtci::_get_repo() {
-    git --git-dir ${KUBEVIRTCI_PATH}/.git remote get-url origin
+    git --git-dir ${KUBEVIRTCI_PATH}/.git config --get remote.origin.url
 }
 
 function kubevirtci::_get_version() {
