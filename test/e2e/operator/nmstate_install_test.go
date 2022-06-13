@@ -100,7 +100,7 @@ var _ = Describe("NMState operator", func() {
 
 func installOperator(namespace string) error {
 	By(fmt.Sprintf("Creating NMState operator with namespace '%s'", namespace))
-	_, err := cmd.Run("make", false, fmt.Sprintf("OPERATOR_NAMESPACE=%s", namespace), fmt.Sprintf("HANDLER_NAMESPACE=%s", namespace), "IMAGE_REGISTRY=registry:5000", "manifests")
+	_, err := cmd.Run("make", false, fmt.Sprintf("OPERATOR_NAMESPACE=%s", namespace), fmt.Sprintf("HANDLER_NAMESPACE=%s", namespace), "manifests")
 	Expect(err).ToNot(HaveOccurred())
 
 	manifestsDir := "build/_output/manifests/"
@@ -109,6 +109,7 @@ func installOperator(namespace string) error {
 		_, err = cmd.Kubectl("apply", "-f", manifestsDir+manifest)
 		Expect(err).ToNot(HaveOccurred())
 	}
+	cmd.Kubectl("apply", "-f", fmt.Sprintf("%s/scc.yaml", manifestsDir)) //ignore the error to be able to run the test against none OCP clusters as well
 	deployment.GetEventually(types.NamespacedName{Namespace: namespace, Name: "nmstate-operator"}).Should(deployment.BeReady())
 
 	return nil
