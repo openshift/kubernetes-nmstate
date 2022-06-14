@@ -19,7 +19,7 @@ export FIRST_SECONDARY_NIC=enp3s0
 export SECOND_SECONDARY_NIC=enp4s0
 export FLAKE_ATTEMPTS="${FLAKE_ATTEMPTS:-5}"
 
-SKIPPED_TESTS="user-guide|bridged"
+SKIPPED_TESTS="user-guide|bridged|should rollback failed state configuration"
 
 if [ "${CI}" == "true" ]; then
     source ${SHARED_DIR}/fix-uid.sh
