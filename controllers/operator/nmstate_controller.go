@@ -46,8 +46,9 @@ import (
 // NMStateReconciler reconciles a NMState object
 type NMStateReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	APIClient client.Client
+	Log       logr.Logger
+	Scheme    *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups="",resources=services;endpoints;persistentvolumeclaims;events;configmaps;secrets;pods,verbs="*",namespace="{{ .OperatorNamespace }}"
@@ -254,7 +255,7 @@ func (r *NMStateReconciler) webhookReplicaCount(nodeSelector map[string]string) 
 	)
 
 	nodes := corev1.NodeList{}
-	err := r.Client.List(context.TODO(), &nodes, client.MatchingLabels(nodeSelector))
+	err := r.APIClient.List(context.TODO(), &nodes, client.MatchingLabels(nodeSelector))
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get nodes: %w", err)
 	}
