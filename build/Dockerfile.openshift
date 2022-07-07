@@ -3,7 +3,7 @@ WORKDIR /go/src/github.com/openshift/kubernetes-nmstate
 COPY . .
 RUN GO111MODULE=on go build --mod=vendor -o build/_output/bin/manager ./cmd/handler/
 
-FROM ubi8-minimal
+FROM registry.ci.openshift.org/ocp/4.12:base
 
 RUN \
     dnf -y update && \
