@@ -15,13 +15,6 @@ rules:
   verbs:
   - '*'
 - apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - get
-  - list
-- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations

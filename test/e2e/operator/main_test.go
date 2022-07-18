@@ -21,13 +21,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	ginkgotypes "github.com/onsi/ginkgo/v2/types"
 	. "github.com/onsi/gomega"
-
-	ginkgoreporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -68,25 +68,16 @@ func newOperatorTestData(ns string) operatorTestData {
 }
 
 var (
-	nodes           []string
-	defaultOperator = newOperatorTestData("nmstate")
+	nodes            []string
+	defaultOperator  = newOperatorTestData("nmstate")
+	knmstateReporter *knmstatereporter.KubernetesNMStateReporter
 )
 
 func TestE2E(t *testing.T) {
 	testenv.TestMain()
 
 	RegisterFailHandler(Fail)
-
-	reporters := make([]Reporter, 0)
-	reporters = append(reporters, knmstatereporter.New("test_logs/e2e/operator", testenv.OperatorNamespace, nodes))
-	if ginkgoreporters.Polarion.Run {
-		reporters = append(reporters, &ginkgoreporters.Polarion)
-	}
-	if ginkgoreporters.JunitOutput != "" {
-		reporters = append(reporters, ginkgoreporters.NewJunitReporter())
-	}
-
-	RunSpecsWithDefaultAndCustomReporters(t, "Operator E2E Test Suite", reporters)
+	RunSpecs(t, "Operator E2E Test Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -100,15 +91,25 @@ var _ = BeforeSuite(func() {
 
 	By("Getting node list from cluster")
 	nodeList := corev1.NodeList{}
-	err := testenv.Client.List(context.TODO(), &nodeList, &client.ListOptions{})
-	Expect(err).ToNot(HaveOccurred())
+	Expect(testenv.Client.List(context.TODO(), &nodeList, &client.ListOptions{})).To(Succeed())
 	for _, node := range nodeList.Items {
 		nodes = append(nodes, node.Name)
 	}
+
+	knmstateReporter = knmstatereporter.New("test_logs/e2e/handler", testenv.OperatorNamespace, nodes)
+	knmstateReporter.Cleanup()
 })
 
 var _ = AfterSuite(func() {
 	uninstallNMStateAndWaitForDeletion(defaultOperator)
+})
+
+var _ = ReportBeforeEach(func(specReport ginkgotypes.SpecReport) {
+	knmstateReporter.ReportBeforeEach(specReport)
+})
+
+var _ = ReportAfterEach(func(specReport ginkgotypes.SpecReport) {
+	knmstateReporter.ReportAfterEach(specReport)
 })
 
 func installNMState(nmstate nmstatev1.NMState) {
@@ -154,6 +155,21 @@ func eventuallyOperandIsReady(testData operatorTestData) {
 	deployment.GetEventually(testData.certManagerKey).Should(deployment.BeReady(), "should start cert-manager deployment")
 }
 
+func podsShouldBeDistributedAtNodes(selectedNodes []corev1.Node, listOptions ...client.ListOption) {
+	podList := &corev1.PodList{}
+	Expect(testenv.Client.List(context.TODO(), podList, listOptions...)).To(Succeed())
+	nodesRunningPod := map[string]bool{}
+	for _, pod := range podList.Items {
+		Expect(pod.Spec.NodeName).To(BeElementOf(namesFromNodes(selectedNodes)), "should run on the selected nodes")
+		nodesRunningPod[pod.Spec.NodeName] = true
+	}
+	if len(selectedNodes) > 1 {
+		Expect(nodesRunningPod).To(HaveLen(len(podList.Items)), "should run pods at different nodes")
+	} else {
+		Expect(nodesRunningPod).To(HaveLen(1), "should run pods at the same node")
+	}
+}
+
 func eventuallyOperandIsNotFound(testData operatorTestData) {
 	eventuallyIsNotFound(testData.handlerKey, &appsv1.DaemonSet{}, "should delete handler daemonset")
 	eventuallyIsNotFound(testData.webhookKey, &appsv1.Deployment{}, "should delete webhook deployment")
@@ -170,4 +186,25 @@ func eventuallyOperandIsFound(testData operatorTestData) {
 	eventuallyIsFound(testData.handlerKey, &appsv1.DaemonSet{}, "should create handler daemonset")
 	eventuallyIsFound(testData.webhookKey, &appsv1.Deployment{}, "should create webhook deployment")
 	eventuallyIsFound(testData.certManagerKey, &appsv1.Deployment{}, "should create cert-manager deployment")
+}
+
+func isKubevirtciCluster() bool {
+	return strings.Contains(os.Getenv("KUBECONFIG"), "kubevirtci")
+}
+
+func controlPlaneNodes() []corev1.Node {
+	nodeList := &corev1.NodeList{}
+	Expect(testenv.Client.List(context.TODO(), nodeList, client.HasLabels{"node-role.kubernetes.io/control-plane"})).To(Succeed())
+	if len(nodeList.Items) == 0 {
+		Expect(testenv.Client.List(context.TODO(), nodeList, client.HasLabels{"node-role.kubernetes.io/master"})).To(Succeed())
+	}
+	return nodeList.Items
+}
+
+func namesFromNodes(nodes []corev1.Node) []string {
+	names := []string{}
+	for _, node := range nodes {
+		names = append(names, node.Name)
+	}
+	return names
 }
