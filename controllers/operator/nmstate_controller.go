@@ -185,6 +185,10 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	if handlerTolerations == nil {
 		handlerTolerations = []corev1.Toleration{operatorExistsToleration}
 	}
+	handlerAffinity := instance.Spec.Affinity
+	if handlerAffinity == nil {
+		handlerAffinity = &corev1.Affinity{}
+	}
 
 	archAndCRInfraNodeSelector := instance.Spec.InfraNodeSelector
 	if archAndCRInfraNodeSelector == nil {
@@ -202,6 +206,20 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	if infraTolerations == nil {
 		infraTolerations = []corev1.Toleration{masterExistsNoScheduleToleration}
 	}
+	infraAffinity := instance.Spec.InfraAffinity
+	if infraAffinity == nil {
+		infraAffinity = &corev1.Affinity{}
+	}
+
+	selfSignConfiguration := instance.Spec.SelfSignConfiguration
+	if selfSignConfiguration == nil {
+		selfSignConfiguration = &nmstatev1.SelfSignConfiguration{
+			CARotateInterval:    "8760h0m0s",
+			CAOverlapInterval:   "24h0m0s",
+			CertRotateInterval:  "4380h0m0s",
+			CertOverlapInterval: "24h0m0s",
+		}
+	}
 
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
 	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
@@ -209,18 +227,14 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 	data.Data["InfraNodeSelector"] = archAndCRInfraNodeSelector
 	data.Data["InfraTolerations"] = infraTolerations
-	data.Data["WebhookAffinity"] = corev1.Affinity{}
+	data.Data["WebhookAffinity"] = infraAffinity
 	data.Data["WebhookReplicas"] = webhookReplicaCountDesired
 	data.Data["WebhookMinReplicas"] = webhookReplicaCountMin
 	data.Data["HandlerNodeSelector"] = archAndCRNodeSelector
 	data.Data["HandlerTolerations"] = handlerTolerations
-	data.Data["HandlerAffinity"] = corev1.Affinity{}
-	// TODO: This is just a place holder to make template renderer happy
-	//       proper variable has to be read from env or CR
-	data.Data["CARotateInterval"] = ""
-	data.Data["CAOverlapInterval"] = ""
-	data.Data["CertRotateInterval"] = ""
-	data.Data["CertOverlapInterval"] = ""
+	data.Data["HandlerAffinity"] = handlerAffinity
+	data.Data["SelfSignConfiguration"] = selfSignConfiguration
+
 	return r.renderAndApply(instance, data, "handler", true)
 }
 

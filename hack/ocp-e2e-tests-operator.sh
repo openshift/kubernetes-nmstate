@@ -15,5 +15,12 @@ export IMAGE_BUILDER=podman
 export DEV_IMAGE_REGISTRY=quay.io
 export KUBEVIRTCI_RUNTIME=podman
 
+if [ "${CI}" == "true" ]; then
+    source ${SHARED_DIR}/fix-uid.sh
+    export SSH=./hack/ssh-ci.sh
+else
+    export SSH=./hack/ssh.sh
+fi
+
 make cluster-sync-operator
 make test-e2e-operator
