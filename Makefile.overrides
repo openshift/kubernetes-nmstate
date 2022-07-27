@@ -7,3 +7,6 @@ test-e2e-handler-ocp:
 
 test-e2e-operator-ocp:
 	./hack/ocp-e2e-tests-operator.sh
+
+check-ocp-bundle: ocp-update-bundle-manifests
+	./hack/check-gen.sh ocp-update-bundle-manifests
