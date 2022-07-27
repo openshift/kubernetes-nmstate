@@ -40,6 +40,7 @@ import (
 
 	"github.com/nmstate/kubernetes-nmstate/api/names"
 	nmstatev1 "github.com/nmstate/kubernetes-nmstate/api/v1"
+	"github.com/nmstate/kubernetes-nmstate/pkg/cluster"
 	nmstaterenderer "github.com/nmstate/kubernetes-nmstate/pkg/render"
 )
 
@@ -154,6 +155,13 @@ func (r *NMStateReconciler) applyRBAC(instance *nmstatev1.NMState) error {
 	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
+
+	isOpenShift, err := cluster.IsOpenShift(r.APIClient)
+	if err != nil {
+		return err
+	}
+	data.Data["IsOpenShift"] = isOpenShift
+
 	return r.renderAndApply(instance, data, "rbac", true)
 }
 
