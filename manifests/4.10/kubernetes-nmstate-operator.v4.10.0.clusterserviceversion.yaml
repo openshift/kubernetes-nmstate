@@ -148,7 +148,7 @@ spec:
                 image: quay.io/openshift/origin-kubernetes-nmstate-operator:4.10
                 imagePullPolicy: Always
                 name: nmstate-operator
-                resources:  
+                resources:
                   requests:
                     cpu: 60m
                     memory: 30Mi
@@ -190,16 +190,6 @@ spec:
           verbs:
           - '*'
         serviceAccountName: nmstate-operator
-      - rules:
-        - apiGroups:
-          - security.openshift.io
-          resources:
-          - securitycontextconstraints
-          verbs:
-          - use
-          resourceNames:
-          - privileged
-        serviceAccountName: nmstate-handler
     strategy: deployment
   installModes:
   - supported: true
