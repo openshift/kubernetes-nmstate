@@ -5,13 +5,16 @@ RUN GO111MODULE=on go build --mod=vendor -o build/_output/bin/manager ./cmd/hand
 
 FROM registry.ci.openshift.org/ocp/4.12:base
 
+COPY build/patch_rpms /patch_rpms
+
 RUN \
     dnf -y update && \
+    dnf install -b -y /patch_rpms/*.rpm && \
     dnf -y install \
-        nmstate \
         iputils \
         iproute && \
-    dnf clean all
+    dnf clean all && \
+    rm -rf /patch_rpms
 
 
 COPY --from=builder /go/src/github.com/openshift/kubernetes-nmstate/build/_output/bin/manager  /usr/bin/

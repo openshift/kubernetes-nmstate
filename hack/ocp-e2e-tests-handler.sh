@@ -37,8 +37,6 @@ with ping fail|\
 when connectivity to default gw is lost after state configuration|\
 when name servers are lost after state configuration|\
 when name servers are wrong after state configuration"
-elif oc get ns openshift-sdn &> /dev/null; then
-    SKIPPED_TESTS+="|should discard disarranged parts of the message and keep desired parts of the message"
 fi
 
 # Apply machine configs and wait until machine config pools got updated
@@ -60,4 +58,4 @@ while ! oc get pods -n nmstate | grep handler; do sleep 1; done
 # Then wait for them to be ready
 while oc get pods -n nmstate | grep "0/1"; do sleep 1; done
 # NOTE(bnemec): The test being filtered with "bridged" was re-enabled in 4.8, but seems to be consistently failing on OCP.
-make test-e2e-handler E2E_TEST_ARGS="--skip=\"${SKIPPED_TESTS}\" --flake-attempts=${FLAKE_ATTEMPTS}" E2E_TEST_TIMEOUT=4h
+make test-e2e-handler E2E_TEST_ARGS="--skip=\"${SKIPPED_TESTS}\" --flake-attempts=${FLAKE_ATTEMPTS} --focus=\"should discard disarranged parts of the message and keep desired parts of the message\"" E2E_TEST_TIMEOUT=4h
