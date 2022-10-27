@@ -5,15 +5,23 @@ RUN GO111MODULE=on go build --mod=vendor -o build/_output/bin/manager ./cmd/hand
 
 FROM registry.ci.openshift.org/ocp/4.12:base
 
+COPY ./rpms/ /rpms/
+
 RUN \
     dnf -y update && \
     dnf -y install \
-        nmstate \
-        nmstate-plugin-ovsdb \
+        # nmstate \
+        # nmstate-plugin-ovsdb \
         iputils \
-        iproute && \
-    dnf clean all
-
+        iproute && \ 
+    dnf -y localinstall \ 
+        /rpms/nmstate-2.2.0-1.el8.x86_64.rpm \
+        /rpms/nmstate-libs-2.2.0-1.el8.x86_64.rpm \
+        /rpms/nmstate-static-2.2.0-1.el8.x86_64.rpm \
+        /rpms/nmstate-devel-2.2.0-1.el8.x86_64.rpm \
+        /rpms/python3-libnmstate-2.2.0-1.el8.x86_64.rpm && \
+    dnf clean all && \
+    rm -rf /rpms
 
 COPY --from=builder /go/src/github.com/openshift/kubernetes-nmstate/build/_output/bin/manager  /usr/bin/
 
