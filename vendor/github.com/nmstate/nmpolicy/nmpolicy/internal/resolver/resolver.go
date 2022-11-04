@@ -25,6 +25,11 @@ import (
 	"github.com/nmstate/nmpolicy/nmpolicy/internal/types"
 )
 
+type captureEntryNameAndSteps struct {
+	captureEntryName string
+	steps            ast.VariadicOperator
+}
+
 type Resolver struct{}
 
 type resolver struct {
@@ -111,6 +116,8 @@ func (r *resolver) resolveCaptureASTEntry() (types.NMState, error) {
 		return r.resolveEqFilter()
 	} else if r.currentNode.Replace != nil {
 		return r.resolveReplace()
+	} else if r.currentNode.Path != nil {
+		return r.resolvePathFilter()
 	}
 	return nil, fmt.Errorf("root node has unsupported operation : %s", *r.currentNode)
 }
@@ -133,6 +140,10 @@ func (r *resolver) resolveReplace() (types.NMState, error) {
 	return replacedState, nil
 }
 
+func (r *resolver) resolvePathFilter() (types.NMState, error) {
+	return filter(r.currentState, *r.currentNode.Path, nil)
+}
+
 func (r *resolver) resolveTernaryOperator(operator *ast.TernaryOperator,
 	resolverFunc func(map[string]interface{}, ast.VariadicOperator, interface{}) (map[string]interface{}, error)) (types.NMState, error) {
 	operatorNode := r.currentNode
@@ -148,7 +159,7 @@ func (r *resolver) resolveTernaryOperator(operator *ast.TernaryOperator,
 		return nil, err
 	}
 	r.currentNode = &(*operator)[2]
-	value, err := r.resolveStringOrCaptureEntryPath()
+	value, err := r.resolveTerminalOrCapturePath()
 	if err != nil {
 		return nil, err
 	}
@@ -182,11 +193,13 @@ func (r *resolver) resolveInputSource() (types.NMState, error) {
 	return nil, fmt.Errorf("invalid input source (%s), only current state or capture reference is supported", *r.currentNode)
 }
 
-func (r *resolver) resolveStringOrCaptureEntryPath() (interface{}, error) {
+func (r *resolver) resolveTerminalOrCapturePath() (interface{}, error) {
 	if r.currentNode.Str != nil {
 		return *r.currentNode.Str, nil
 	} else if r.currentNode.Path != nil {
 		return r.resolveCaptureEntryPath()
+	} else if r.currentNode.Boolean != nil {
+		return *r.currentNode.Boolean, nil
 	} else {
 		return nil, fmt.Errorf("not supported value. Only string or capture entry path are supported")
 	}
@@ -204,7 +217,7 @@ func (r *resolver) resolveCaptureEntryPath() (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return resolvedPath.walkState(capturedStateEntry)
+	return walk(capturedStateEntry, resolvedPath.steps)
 }
 
 func (r *resolver) resolvePath() (*captureEntryNameAndSteps, error) {
