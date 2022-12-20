@@ -53,6 +53,28 @@ metadata:
                   "name": "br1",
                   "state": "up",
                   "type": "linux-bridge"
+                },
+                {
+                  "ipv4": {
+                    "dhcp": true,
+                    "enabled": true,
+                    "auto-dns": false
+                  },
+                  "bridge": {
+                    "options": {
+                      "stp": {
+                        "enabled": false
+                      }
+                    }
+                  },
+                  "port": [
+                    {
+                      "name": "eth3"
+                    }
+                  ],
+                  "name": "br2",
+                  "state": "up",
+                  "type": "linux-bridge"
                 }
               ]
             }
