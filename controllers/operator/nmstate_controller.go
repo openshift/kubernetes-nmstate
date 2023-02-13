@@ -42,14 +42,16 @@ import (
 
 	"github.com/nmstate/kubernetes-nmstate/api/names"
 	nmstatev1 "github.com/nmstate/kubernetes-nmstate/api/v1"
+	"github.com/nmstate/kubernetes-nmstate/pkg/cluster"
 	nmstaterenderer "github.com/nmstate/kubernetes-nmstate/pkg/render"
 )
 
 // NMStateReconciler reconciles a NMState object
 type NMStateReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	APIClient client.Client
+	Log       logr.Logger
+	Scheme    *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups="",resources=services;endpoints;persistentvolumeclaims;events;configmaps;secrets;pods,verbs="*"
@@ -161,6 +163,12 @@ func (r *NMStateReconciler) applyRBAC(instance *nmstatev1.NMState) error {
 		return errors.Wrap(err, "failed checking if cluster-reader ClusterRole exists")
 	}
 
+	isOpenShift, err := cluster.IsOpenShift(r.APIClient)
+	if err != nil {
+		return err
+	}
+	data.Data["IsOpenShift"] = isOpenShift
+
 	return r.renderAndApply(instance, data, "rbac", true)
 }
 
@@ -262,7 +270,7 @@ func (r *NMStateReconciler) webhookReplicaCount(nodeSelector map[string]string) 
 	)
 
 	nodes := corev1.NodeList{}
-	err := r.Client.List(context.TODO(), &nodes, client.MatchingLabels(nodeSelector))
+	err := r.APIClient.List(context.TODO(), &nodes, client.MatchingLabels(nodeSelector))
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get nodes: %w", err)
 	}
