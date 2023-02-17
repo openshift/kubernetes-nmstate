@@ -1,5 +1,7 @@
 # OpenShift-specific targets and defaults, included after the upstream Makefile.
 
+e2e_test_args = --vv -timeout=$(E2E_TEST_TIMEOUT) --slow-spec-threshold=60s $(E2E_TEST_ARGS)
+
 test-e2e-ocp: test-e2e-handler-ocp # deprecated. Use test-e2e-handler-ocp instead
 
 test-e2e-handler-ocp:
