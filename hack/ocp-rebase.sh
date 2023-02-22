@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+#foo
 # This script helps with rebasing the openshift repo to upstream. 
 # It follows the procedure from https://github.com/openshift/kubernetes-nmstate/pull/298. 
 # Anyhow the user should check that all "UPSTREAM: <carry>" commits got carried,
