@@ -21,7 +21,7 @@ github.com/BurntSushi/toml
 # github.com/MakeNowJust/heredoc v0.0.0-20170808103936-bb23615498cd
 ## explicit
 github.com/MakeNowJust/heredoc
-# github.com/Masterminds/goutils v1.1.0
+# github.com/Masterminds/goutils v1.1.0 => github.com/Masterminds/goutils v1.1.1
 ## explicit
 github.com/Masterminds/goutils
 # github.com/Masterminds/semver v1.5.0
@@ -1840,3 +1840,4 @@ sigs.k8s.io/yaml
 # golang.org/x/text => golang.org/x/text v0.3.3
 # k8s.io/client-go => k8s.io/client-go v0.23.1
 # k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+# github.com/Masterminds/goutils => github.com/Masterminds/goutils v1.1.1
