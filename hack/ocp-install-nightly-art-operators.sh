@@ -24,11 +24,11 @@ function wait_for_all_nodes_ready() {
   done
 }	
 
-brew_credentials=$(curl --negotiate -u : https://employee-token-manager.registry.redhat.com/v1/tokens -s) #make sure you created a token before (https://source.redhat.com/groups/public/teamnado/wiki/brew_registry)
+brew_credentials=$(curl --cert -u : https://employee-token-manager.registry.redhat.com/v1/tokens -s) #make sure you created a token before (https://source.redhat.com/groups/public/teamnado/wiki/brew_registry)
 if [[ "${brew_credentials}" == "null" ]]; then
   echo "No Brew token found. Trying to create a token..."
   # Brew token does not exist. Create one
-  brew_credentials=$(curl --negotiate -u : -X POST -H 'Content-Type: application/json' --data '{"description":"openshift 4 testing"}' https://employee-token-manager.registry.redhat.com/v1/tokens -s)
+  brew_credentials=$(curl --cert -u : -X POST -H 'Content-Type: application/json' --data '{"description":"openshift 4 testing"}' https://employee-token-manager.registry.redhat.com/v1/tokens -s)
   if [[ -z "$brew_credentials" ]] || [[ "$brew_credentials" == "null" ]]; then
     echo "Could not create a Brew token for you. Please visit https://source.redhat.com/groups/public/teamnado/wiki/brew_registry for more information about creating the Brew token manually." 
     exit 1
