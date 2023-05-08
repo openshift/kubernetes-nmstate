@@ -32,24 +32,15 @@ fi
 if oc get ns openshift-ovn-kubernetes &> /dev/null; then
     # We are using OVNKubernetes -> use enp1s0 as primary nic
     export PRIMARY_NIC=enp1s0
+    # Some tests don't work correctly in OVNK due to our inability to modify the br-ex interface
     SKIPPED_TESTS+="|NodeNetworkConfigurationPolicy bonding default interface|\
 with ping fail|\
 when connectivity to default gw is lost after state configuration|\
 when name servers are lost after state configuration|\
 when name servers are wrong after state configuration|\
-LLDP configuration with nmpolicy"
+LLDP configuration with nmpolicy|\
+with capture"
 fi
-
-# Apply machine configs and wait until machine config pools got updated
-old_mcp_generation=$(oc get mcp master -o jsonpath={.metadata.generation})
-if oc create -f test/e2e/machineconfigs.yaml; then
-    # If MCs could be created, wait until the MCP are aware of new machine configs
-    while [ "$old_mcp_generation" -eq "$(oc get mcp master -o jsonpath={.metadata.generation})" ]; do 
-        echo "waiting for MCP update to start..."; 
-        sleep 1; 
-    done
-fi
-while ! oc wait mcp --all --for=condition=Updated --timeout -1s; do sleep 1; done
 
 make cluster-sync-operator
 oc create -f test/e2e/nmstate.yaml
