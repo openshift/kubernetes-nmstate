@@ -115,10 +115,12 @@ var _ = Describe("NodeNetworkConfigurationPolicy bonding default interface", fun
 		})
 
 		It("should successfully move default IP address on top of the bond", func() {
+			_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] Start2")
 			var (
 				expectedBond = interfaceByName(interfaces(boundUpWithPrimaryAndSecondary(bond1)), bond1)
 			)
 
+			_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] Debug2-1")
 			By("Checking that bond was configured and obtained the same IP address")
 			for _, node := range nodes {
 				verifyBondIsUpWithPrimaryNicIP(node, expectedBond, addressByNode[node])
@@ -134,6 +136,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy bonding default interface", fun
 
 			Byf("Node %s was rebooted, verifying %s exists and ip was not changed", nodeToReboot, bond1)
 			verifyBondIsUpWithPrimaryNicIP(nodeToReboot, expectedBond, addressByNode[nodeToReboot])
+			_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] End2")
 		})
 	})
 })

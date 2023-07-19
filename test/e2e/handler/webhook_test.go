@@ -19,6 +19,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -88,10 +89,14 @@ var _ = Describe("Validation Admission Webhook", func() {
 			resetDesiredStateForNodes()
 		})
 		It("Should deny updating rolled out policy when it's in progress", func() {
+			_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] Start1")
 			Byf("Updating the policy %s", TestPolicy)
+			_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] Debug1-1")
 			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] Debug1-2")
 				return setDesiredStateWithPolicyAndNodeSelector(TestPolicy, linuxBrUpNoPorts(bridge1), map[string]string{})
 			})
+			_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] Debug1-3")
 			Expect(err).
 				To(
 					MatchError(
@@ -99,6 +104,7 @@ var _ = Describe("Validation Admission Webhook", func() {
 							"failed to admit NodeNetworkConfigurationPolicy test-policy: message: policy test-policy is still in progress. ",
 					),
 				)
+			_, _ = fmt.Fprint(GinkgoWriter, "[CHOCOBOMB] End1")
 		})
 	})
 	Context("When a policy with too long name is created", func() {
