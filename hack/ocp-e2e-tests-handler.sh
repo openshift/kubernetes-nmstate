@@ -22,7 +22,7 @@ export FLAKE_ATTEMPTS="${FLAKE_ATTEMPTS:-5}"
 SKIPPED_TESTS="user-guide|bridged"
 
 if [ "${CI}" == "true" ]; then
-    source ${SHARED_DIR}/fix-uid.sh
+    source ${SHARED_DIR}/packet-conf.sh
     export SSH=./hack/ssh-ci.sh
 else
     export SSH=./hack/ssh.sh
@@ -45,9 +45,9 @@ fi
 old_mcp_generation=$(oc get mcp master -o jsonpath={.metadata.generation})
 if oc create -f test/e2e/machineconfigs.yaml; then
     # If MCs could be created, wait until the MCP are aware of new machine configs
-    while [ "$old_mcp_generation" -eq "$(oc get mcp master -o jsonpath={.metadata.generation})" ]; do 
-        echo "waiting for MCP update to start..."; 
-        sleep 1; 
+    while [ "$old_mcp_generation" -eq "$(oc get mcp master -o jsonpath={.metadata.generation})" ]; do
+        echo "waiting for MCP update to start...";
+        sleep 1;
     done
 fi
 while ! oc wait mcp --all --for=condition=Updated --timeout -1s; do sleep 1; done
