@@ -18,6 +18,7 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net/http"
@@ -32,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	// +kubebuilder:scaffold:imports
 
@@ -84,9 +86,20 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opt)))
 
+	// Disable HTTP2 to avoid CVE-2023-39325
+	// See https://issues.redhat.com/browse/OCPBUGS-21073
+	disableHTTP2 := func(c *tls.Config) {
+		c.NextProtos = []string{"http/1.1"}
+	}
+	webhookServerOptions := webhook.Options{
+		TLSOpts: []func(config *tls.Config){disableHTTP2},
+	}
+	webhookServer := webhook.NewServer(webhookServerOptions)
+
 	ctrlOptions := ctrl.Options{
 		Scheme:             scheme,
 		MetricsBindAddress: "0", // disable metrics
+		WebhookServer: webhookServer,
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrlOptions)
