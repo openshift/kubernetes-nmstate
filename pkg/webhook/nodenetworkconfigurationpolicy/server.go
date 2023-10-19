@@ -31,7 +31,7 @@ func Add(mgr manager.Manager) error {
 	// 1.- User changes nncp desiredState so it triggers deleteConditionsHook()
 	// 2.- Since we have deleted the condition the status-mutate webhook is called and
 	//     there we set conditions to Unknown. This final result will be updated.
-	server := &webhook.Server{}
+	server := &webhook.DefaultServer{}
 	server.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 	server.Register("/nodenetworkconfigurationpolicies-mutate", deleteConditionsHook())
 	server.Register("/nodenetworkconfigurationpolicies-status-mutate", setConditionsUnknownHook())

@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
@@ -62,6 +63,8 @@ type NodeReconciler struct {
 	nmstateUpdater NmstateUpdater
 	nmstatectlShow NmstatectlShow
 }
+
+var mgr manager.Manager
 
 // Reconcile reads that state of the cluster for a Node object and makes changes based on the state read
 // and what is in the Node.Spec
@@ -198,7 +201,7 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	// Add watch for Node
 	err = c.Watch(
-		&source.Kind{Type: &corev1.Node{}},
+		source.Kind(mgr.GetCache(), &corev1.Node{}),
 		&handler.EnqueueRequestForObject{},
 		onCreationForThisNode,
 	)
@@ -208,8 +211,8 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	// Add watch for NNS
 	err = c.Watch(
-		&source.Kind{Type: &nmstatev1beta1.NodeNetworkState{}},
-		&handler.EnqueueRequestForOwner{OwnerType: &corev1.Node{}},
+		source.Kind(mgr.GetCache(), &nmstatev1beta1.NodeNetworkState{}),
+		handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &corev1.Node{}, handler.OnlyControllerOwner()),
 		onDeleteOrForceUpdateForThisNode,
 	)
 	if err != nil {
