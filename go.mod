@@ -60,7 +60,6 @@ require (
 	github.com/google/pprof v0.0.0-20210720184732-4bb14d4b1be1 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.3.1 // indirect
-	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/huandu/xstrings v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -137,14 +136,7 @@ replace (
 	k8s.io/api => k8s.io/api v0.26.3
 	k8s.io/apimachinery => k8s.io/apimachinery v0.26.3
 	k8s.io/client-go => k8s.io/client-go v0.26.3
-	// We need to downgrade kube-openapi because of breaking change in the gnostic package
-	// that changed its signature from github.com/googleapis/gnostic/extensions to
-	// github.com/google/gnostic/extensions. As we don't have support for a graceful rename
-	// of a golang package, we need to make sure only one of them is used. Not doing this
-	// causes issues because gnostic uses protobuff which cannot register the same file from
-	// multiple sources (that happens because googleapis/gnostic/extensions as well as
-	// renamed google/gnostic/extensions try to both register extensions/extension.proto).
-	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220327004550-2cbad14cd8ea
 )
 
 replace github.com/Masterminds/goutils => github.com/Masterminds/goutils v1.1.1
