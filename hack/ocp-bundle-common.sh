@@ -3,7 +3,7 @@
 set -ex
 
 function yq4 {
-  VERSION_REGEX=" version 4\.[0-9]+\.[0-9]$"
+  VERSION_REGEX=" version v?4\.[0-9]+\.[0-9]$"
   if [[ "`yq --version`" =~ $VERSION_REGEX ]]; then
     # installed yq version is v4 -> we are OK
     echo yq
@@ -15,7 +15,7 @@ function yq4 {
       echo ${INSTALL_DIR}/yq
     else
       # yq is not installed/in wrong version --> install v4
-      GOBIN=$INSTALL_DIR GOFLAGS= go install github.com/mikefarah/yq/v4@latest
+      GOBIN=$INSTALL_DIR GOFLAGS= go install github.com/mikefarah/yq/v4@v4.35.2
       echo ${INSTALL_DIR}/yq
     fi
   fi
