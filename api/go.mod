@@ -12,7 +12,7 @@ require (
 )
 
 require (
-	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/logr v1.3.0 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
@@ -39,3 +39,8 @@ require (
 )
 
 replace k8s.io/api => k8s.io/api v0.26.3
+
+replace (
+	go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.21.0 // Required to fix CVE-2023-45142
+	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.21.0 // Required to fix CVE-2023-45142
+)
