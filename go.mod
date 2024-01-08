@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/evanphx/json-patch v4.12.0+incompatible
-	github.com/go-logr/logr v1.2.4
+	github.com/go-logr/logr v1.3.0
 	github.com/gofrs/flock v0.8.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/nmstate/kubernetes-nmstate/api v0.0.0-00010101000000-000000000000
@@ -98,7 +98,7 @@ require (
 	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/oauth2 v0.13.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
@@ -128,8 +128,8 @@ replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/mattn/go-sqlite3 => github.com/mattn/go-sqlite3 v1.10.0
 	github.com/nmstate/kubernetes-nmstate/api => ./api
-	go.opentelemetry.io/otel => go.opentelemetry.io/otel v0.20.0
-	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v0.20.0
+	go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.21.0 // Required to fix CVE-2023-45142
+	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.21.0 // Required to fix CVE-2023-45142
 	golang.org/x/text => golang.org/x/text v0.3.7 // Required to fix CVE-2021-38561
 	k8s.io/api => k8s.io/api v0.26.3
 	k8s.io/client-go => k8s.io/client-go v0.26.3
