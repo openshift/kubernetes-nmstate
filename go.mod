@@ -128,6 +128,7 @@ replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/mattn/go-sqlite3 => github.com/mattn/go-sqlite3 v1.10.0
 	github.com/nmstate/kubernetes-nmstate/api => ./api
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0 // Required to fix CVE-2023-45142
 	go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.21.0 // Required to fix CVE-2023-45142
 	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.21.0 // Required to fix CVE-2023-45142
 	golang.org/x/text => golang.org/x/text v0.3.7 // Required to fix CVE-2021-38561
