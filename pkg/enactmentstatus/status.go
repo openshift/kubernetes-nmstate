@@ -20,15 +20,11 @@ package enactmentstatus
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"time"
-
 	"github.com/pkg/errors"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -37,12 +33,17 @@ import (
 )
 
 var (
-	log = logf.Log.WithName("enactmentstatus")
+	log       = logf.Log.WithName("enactmentstatus")
+	allErrors = func(error) bool { return true }
 )
 
 func Update(cli client.Client, key types.NamespacedName, statusSetter func(*nmstate.NodeNetworkConfigurationEnactmentStatus)) error {
 	logger := log.WithValues("enactment", key.Name)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+	// Some network configuration can break api server connectivity temporally and that
+	// prevents the NNCE to final state so is forever at in progress makeing the NNCP also
+	// forever in progress too, this retry allow to overcome that issue.
+	return retry.OnError(retry.DefaultRetry, allErrors, func() error {
 		instance := &nmstatev1beta1.NodeNetworkConfigurationEnactment{}
 		err := cli.Get(context.TODO(), key, instance)
 		if err != nil {
@@ -53,23 +54,7 @@ func Update(cli client.Client, key types.NamespacedName, statusSetter func(*nmst
 
 		logger.Info(fmt.Sprintf("status: %+v", instance.Status))
 
-		err = cli.Status().Update(context.TODO(), instance)
-		if err != nil {
-			return err
-		}
-
-		// Wait until enactment has being updated at the node
-		expectedStatus := instance.Status
-		return wait.PollImmediate(1*time.Second, 30*time.Second, func() (bool, error) { //nolint:gomnd
-			err = cli.Get(context.TODO(), key, instance)
-			if err != nil {
-				return false, err
-			}
-
-			isEqual := reflect.DeepEqual(expectedStatus, instance.Status)
-			logger.Info(fmt.Sprintf("enactment updated at the node: %t", isEqual))
-			return isEqual, nil
-		})
+		return cli.Status().Update(context.TODO(), instance)
 	})
 }
 
