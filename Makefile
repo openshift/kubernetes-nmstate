@@ -27,7 +27,7 @@ PLUGIN_IMAGE_TAG ?= latest
 PLUGIN_IMAGE_FULL_NAME ?= $(IMAGE_REPO)/$(PLUGIN_IMAGE_NAME):$(PLUGIN_IMAGE_TAG)
 PLUGIN_IMAGE ?= $(IMAGE_REGISTRY)/$(PLUGIN_IMAGE_FULL_NAME)
 
-KUBE_RBAC_PROXY_IMAGE ?= quay.io/openshift/origin-kube-rbac-proxy:4.10.0
+KUBE_RBAC_PROXY_IMAGE ?= quay.io/openshift/origin-kube-rbac-proxy:latest
 
 export HANDLER_NAMESPACE ?= nmstate
 export OPERATOR_NAMESPACE ?= $(HANDLER_NAMESPACE)
