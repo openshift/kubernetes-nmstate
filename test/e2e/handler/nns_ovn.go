@@ -35,6 +35,10 @@ var _ = Describe("[nns] NNS OVN bridge mappings", func() {
 	)
 
 	BeforeEach(func() {
+		for _, node := range nodes {
+			Expect(nodeBridgeMappings(node)).To(BeEmpty())
+		}
+
 		By("provisioning some bridge mappings ...")
 		updateDesiredState(bridgeMappings(networkName, bridgeName))
 
@@ -53,7 +57,7 @@ var _ = Describe("[nns] NNS OVN bridge mappings", func() {
 	It("are listed", func() {
 		for _, node := range nodes {
 			Expect(nodeBridgeMappings(node)).To(
-				ContainElement(state.PhysicalNetworks{Name: networkName, Bridge: bridgeName}))
+				ConsistOf(state.PhysicalNetworks{Name: networkName, Bridge: bridgeName}))
 		}
 	})
 })
