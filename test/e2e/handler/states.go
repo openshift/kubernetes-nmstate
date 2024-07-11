@@ -26,6 +26,8 @@ import (
 	"github.com/onsi/gomega/types"
 
 	nmstate "github.com/nmstate/kubernetes-nmstate/api/shared"
+
+	"github.com/nmstate/kubernetes-nmstate/test/environment"
 )
 
 func ethernetNicsState(states map[string]string) nmstate.State {
@@ -287,7 +289,9 @@ func vlanUpWithStaticIP(iface, ipAddress string) nmstate.State {
 }
 
 func resetPrimaryAndSecondaryNICs() nmstate.State {
-	return nmstate.NewState(fmt.Sprintf(`interfaces:
+	noAdditionalNICs := environment.GetVarWithDefault("ENV_WITH_ONLY_ONE_NIC", "FALSE")
+	if noAdditionalNICs == "FALSE" {
+		return nmstate.NewState(fmt.Sprintf(`interfaces:
   - name: %s
     type: ethernet
     state: up
@@ -314,6 +318,13 @@ func resetPrimaryAndSecondaryNICs() nmstate.State {
       enabled: false
 
 `, primaryNic, firstSecondaryNic, secondSecondaryNic))
+	} else {
+		return nmstate.NewState(fmt.Sprintf(`interfaces:
+  - name: %s
+    type: ethernet
+    state: up
+`, primaryNic))
+	}
 }
 
 func bridgeOnTheSecondaryInterfaceState() nmstate.State {
