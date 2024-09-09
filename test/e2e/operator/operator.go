@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nmstatev1 "github.com/nmstate/kubernetes-nmstate/api/v1"
+	"github.com/nmstate/kubernetes-nmstate/pkg/cluster"
 	"github.com/nmstate/kubernetes-nmstate/test/cmd"
 	"github.com/nmstate/kubernetes-nmstate/test/e2e/daemonset"
 	"github.com/nmstate/kubernetes-nmstate/test/e2e/deployment"
@@ -119,14 +120,18 @@ func EventuallyOperandIsReady(testData TestData) {
 	daemonset.GetEventually(testData.HandlerKey).Should(daemonset.BeReady(), "should start handler daemonset")
 	By("Wait deployment webhook is ready")
 	deployment.GetEventually(testData.WebhookKey).Should(deployment.BeReady(), "should start webhook deployment")
-	By("Wait deployment cert-manager is ready")
-	deployment.GetEventually(testData.CertManagerKey).Should(deployment.BeReady(), "should start cert-manager deployment")
+	if !IsOpenShift() {
+		By("Wait deployment cert-manager is ready")
+		deployment.GetEventually(testData.CertManagerKey).Should(deployment.BeReady(), "should start cert-manager deployment")
+	}
 }
 
 func EventuallyOperandIsNotFound(testData TestData) {
 	EventuallyIsNotFound(testData.HandlerKey, &appsv1.DaemonSet{}, "should delete handler daemonset")
 	EventuallyIsNotFound(testData.WebhookKey, &appsv1.Deployment{}, "should delete webhook deployment")
-	EventuallyIsNotFound(testData.CertManagerKey, &appsv1.Deployment{}, "should delete cert-manager deployment")
+	if !IsOpenShift() {
+		EventuallyIsNotFound(testData.CertManagerKey, &appsv1.Deployment{}, "should delete cert-manager deployment")
+	}
 	By("Wait for operand pods to terminate")
 	Eventually(func() ([]corev1.Pod, error) {
 		podList := corev1.PodList{}
@@ -142,7 +147,9 @@ func EventuallyOperandIsNotFound(testData TestData) {
 func EventuallyOperandIsFound(testData TestData) {
 	EventuallyIsFound(testData.HandlerKey, &appsv1.DaemonSet{}, "should create handler daemonset")
 	EventuallyIsFound(testData.WebhookKey, &appsv1.Deployment{}, "should create webhook deployment")
-	EventuallyIsFound(testData.CertManagerKey, &appsv1.Deployment{}, "should create cert-manager deployment")
+	if !IsOpenShift() {
+		EventuallyIsFound(testData.CertManagerKey, &appsv1.Deployment{}, "should create cert-manager deployment")
+	}
 }
 
 func InstallOperator(operator TestData) {
@@ -173,4 +180,11 @@ func UninstallOperator(operator TestData) {
 	}
 	Expect(testenv.Client.Delete(context.TODO(), &ns)).To(SatisfyAny(Succeed(), WithTransform(apierrors.IsNotFound, BeTrue())))
 	EventuallyIsNotFound(types.NamespacedName{Name: operator.Ns}, &ns, "should delete the namespace")
+}
+
+func IsOpenShift() bool {
+	GinkgoHelper()
+	isOpenShift, err := cluster.IsOpenShift(testenv.Client)
+	Expect(err).ToNot(HaveOccurred())
+	return isOpenShift
 }
