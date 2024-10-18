@@ -120,7 +120,7 @@ func init() {
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
-//nolint: funlen, gocyclo
+// nolint: funlen, gocyclo
 func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, request ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
 	log := r.Log.WithValues("nodenetworkconfigurationpolicy", request.NamespacedName)
@@ -442,12 +442,12 @@ func (r *NodeNetworkConfigurationPolicyReconciler) incrementUnavailableNodeCount
 
 func (r *NodeNetworkConfigurationPolicyReconciler) decrementUnavailableNodeCount(policy *nmstatev1.NodeNetworkConfigurationPolicy) {
 	policyKey := types.NamespacedName{Name: policy.GetName(), Namespace: policy.GetNamespace()}
-	err := tryDecrementingUnavailableNodeCount(r.Client, r.Client, policyKey)
+	err := tryDecrementingUnavailableNodeCount(r.Client, r.Client, policyKey, r.Log)
 	if err != nil {
-		r.Log.Error(err, "error decrementing unavailableNodeCount with cached client, trying again with non-cached client.")
-		err = tryDecrementingUnavailableNodeCount(r.Client, r.APIClient, policyKey)
+		r.Log.Error(err, "CHOCOBOMB: error decrementing unavailableNodeCount with cached client, trying again with non-cached client.")
+		err = tryDecrementingUnavailableNodeCount(r.Client, r.APIClient, policyKey, r.Log)
 		if err != nil {
-			r.Log.Error(err, "error decrementing unavailableNodeCount with non-cached client")
+			r.Log.Error(err, "CHOCOBOMB: error decrementing unavailableNodeCount with non-cached client")
 		}
 	}
 }
@@ -456,20 +456,25 @@ func tryDecrementingUnavailableNodeCount(
 	statusWriterClient client.StatusClient,
 	readerClient client.Reader,
 	policyKey types.NamespacedName,
+	logger logr.Logger,
 ) error {
 	instance := &nmstatev1.NodeNetworkConfigurationPolicy{}
 	err := retry.OnError(retry.DefaultRetry, func(error) bool { return true }, func() error {
+		logger.Info("CHOCOBOMB2: not an error; starting pass for tryDecrementingUnavailableNodeCount")
 		err := readerClient.Get(context.TODO(), policyKey, instance)
 		if err != nil {
+			logger.Error(err, "CHOCOBOMB2: error getting readerClient")
 			return err
 		}
 		if instance.Status.UnavailableNodeCount <= 0 {
+			logger.Error(err, "CHOCOBOMB2: not enough unavailable nodes")
 			return fmt.Errorf("no unavailable nodes")
 		}
 		instance.Status.LastUnavailableNodeCountUpdate = &metav1.Time{Time: time.Now()}
 		instance.Status.UnavailableNodeCount -= 1
 		return statusWriterClient.Status().Update(context.TODO(), instance)
 	})
+	logger.Error(err, "CHOCOBOMB2: last error")
 	return err
 }
 
