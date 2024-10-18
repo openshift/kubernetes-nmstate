@@ -192,13 +192,16 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	}
 	if enactmentCountByCondition.Failed() > 0 {
 		err = fmt.Errorf("policy has failing enactments, aborting")
+		log.Info(fmt.Sprintf("CHOCOBOMB4: failing here, full nncp: %+v", instance))
+		log.Info(fmt.Sprintf("CHOCOBOMB4: failing here, enactment: %+v", enactmentInstance))
+		log.Info(fmt.Sprintf("CHOCOBOMB4: failing here, condition count: %+v", enactmentCountByCondition))
 		log.Error(err, "")
 		enactmentConditions.NotifyAborted(err)
 		return ctrl.Result{}, nil
 	}
 
 	if r.shouldIncrementUnavailableNodeCount(instance, previousConditions) {
-		r.Log.Info("CHOCOBOMB3: yes, we are incrementing")
+		r.Log.Info(fmt.Sprintf("CHOCOBOMB3: NNCP %s: yes, we are incrementing", instance.Name))
 		err = r.incrementUnavailableNodeCount(instance)
 		if err != nil {
 			r.Log.Error(err, "CHOCOBOMB3: failed to increment")
@@ -417,7 +420,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) shouldIncrementUnavailableNod
 	policy *nmstatev1.NodeNetworkConfigurationPolicy,
 	conditions *nmstateapi.ConditionList,
 ) bool {
-	r.Log.Info("CHOCOBOMB3: asked whether shouldIncrementUnavailableNodeCount")
+	r.Log.Info(fmt.Sprintf("CHOCOBOMB3: NNCP %s: asked whether shouldIncrementUnavailableNodeCount", policy.Name))
 	return !enactmentstatus.IsProgressing(conditions) &&
 		(policy.Status.LastUnavailableNodeCountUpdate == nil ||
 			time.Since(policy.Status.LastUnavailableNodeCountUpdate.Time) < (nmstate.DesiredStateConfigurationTimeout+probe.ProbesTotalTimeout))
@@ -472,7 +475,7 @@ func tryDecrementingUnavailableNodeCount(
 			return err
 		}
 		if instance.Status.UnavailableNodeCount <= 0 {
-			logger.Error(err, "CHOCOBOMB2: not enough unavailable nodes")
+			logger.Error(err, fmt.Sprintf("CHOCOBOMB2: NNCP %s: not enough unavailable nodes", instance.Name))
 			return fmt.Errorf("no unavailable nodes")
 		}
 		instance.Status.LastUnavailableNodeCountUpdate = &metav1.Time{Time: time.Now()}
