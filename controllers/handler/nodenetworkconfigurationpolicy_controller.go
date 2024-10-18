@@ -198,13 +198,17 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	}
 
 	if r.shouldIncrementUnavailableNodeCount(instance, previousConditions) {
+		r.Log.Info("CHOCOBOMB3: yes, we are incrementing")
 		err = r.incrementUnavailableNodeCount(instance)
 		if err != nil {
+			r.Log.Error(err, "CHOCOBOMB3: failed to increment")
 			if apierrors.IsConflict(err) || errors.Is(err, node.MaxUnavailableLimitReachedError{}) {
+				r.Log.Error(err, "CHOCOBOMB3: failed to increment, we will requeue")
 				enactmentConditions.NotifyPending()
 				log.Info(err.Error())
 				return ctrl.Result{RequeueAfter: nodeRunningUpdateRetryTime}, nil
 			}
+			r.Log.Error(err, "CHOCOBOMB3: failed to increment and not requeueuing")
 			return ctrl.Result{}, err
 		}
 	}
@@ -413,6 +417,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) shouldIncrementUnavailableNod
 	policy *nmstatev1.NodeNetworkConfigurationPolicy,
 	conditions *nmstateapi.ConditionList,
 ) bool {
+	r.Log.Info("CHOCOBOMB3: asked whether shouldIncrementUnavailableNodeCount")
 	return !enactmentstatus.IsProgressing(conditions) &&
 		(policy.Status.LastUnavailableNodeCountUpdate == nil ||
 			time.Since(policy.Status.LastUnavailableNodeCountUpdate.Time) < (nmstate.DesiredStateConfigurationTimeout+probe.ProbesTotalTimeout))
