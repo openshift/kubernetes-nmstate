@@ -17,7 +17,7 @@ metadata:
     categories: OpenShift Optional
     certified: "false"
     containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.19
-    createdAt: "2022-02-21 08:46:16"
+    createdAt: "2025-06-26T05:47:34Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     olm.skipRange: '>=4.3.0 <4.19.0'
@@ -65,18 +65,12 @@ spec:
                 - configmaps
                 - endpoints
                 - events
+                - namespaces
                 - persistentvolumeclaims
                 - pods
                 - secrets
-                - services
-              verbs:
-                - '*'
-            - apiGroups:
-                - ""
-              resources:
-                - configmaps
-                - namespaces
                 - serviceaccounts
+                - services
               verbs:
                 - '*'
             - apiGroups:
@@ -94,6 +88,7 @@ spec:
                 - '*'
             - apiGroups:
                 - apiextensions.k8s.io
+                - nmstate.io
               resources:
                 - '*'
               verbs:
@@ -121,12 +116,13 @@ spec:
                 - create
                 - get
                 - list
+                - patch
                 - update
                 - watch
             - apiGroups:
-                - nmstate.io
+                - networking.k8s.io
               resources:
-                - '*'
+                - networkpolicies
               verbs:
                 - '*'
             - apiGroups:
@@ -168,6 +164,9 @@ spec:
             strategy: {}
             template:
               metadata:
+                annotations:
+                  target.workload.openshift.io/management: |
+                    {"effect": "PreferredDuringScheduling"}
                 labels:
                   app: kubernetes-nmstate-operator
                   name: kubernetes-nmstate-operator
