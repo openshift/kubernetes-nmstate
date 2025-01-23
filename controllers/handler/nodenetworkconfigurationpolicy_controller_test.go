@@ -59,16 +59,16 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 			predicate := onCreateOrUpdateWithDifferentGenerationOrDelete
 
 			Expect(predicate.
-				CreateFunc(event.CreateEvent{
+				CreateFunc(event.TypedCreateEvent[*nmstatev1.NodeNetworkConfigurationPolicy]{
 					Object: &newNNCP,
 				})).To(BeTrue())
 			Expect(predicate.
-				UpdateFunc(event.UpdateEvent{
+				UpdateFunc(event.TypedUpdateEvent[*nmstatev1.NodeNetworkConfigurationPolicy]{
 					ObjectOld: &oldNNCP,
 					ObjectNew: &newNNCP,
 				})).To(Equal(c.ReconcileUpdate))
 			Expect(predicate.
-				DeleteFunc(event.DeleteEvent{
+				DeleteFunc(event.TypedDeleteEvent[*nmstatev1.NodeNetworkConfigurationPolicy]{
 					Object: &oldNNCP,
 				})).To(BeTrue())
 		},
