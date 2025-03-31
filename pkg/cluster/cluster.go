@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"os"
 
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nmstatetls "github.com/nmstate/kubernetes-nmstate/pkg/tls"
@@ -33,19 +31,8 @@ import (
 
 var log = logf.Log.WithName("cluster")
 
-// IsOpenShift returns true if the current cluster is an OpenShift/OKD cluster.
+// IsOpenShift returns always true since this is the openshift fork
 func IsOpenShift(kclient client.Client) (bool, error) {
-	// if the cluster has the securityContextConstraint resource of the group security.openshift.io, then it is most likely an OCP/OKD cluster
-	sccGVR := schema.GroupVersion{Group: "security.openshift.io", Version: "v1"}.WithResource("securitycontextconstraints")
-	_, err := kclient.RESTMapper().ResourcesFor(sccGVR)
-
-	if err != nil {
-		if apimeta.IsNoMatchError(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("could not determine if running on OCP/OKD: %w", err)
-	}
-
 	return true, nil
 }
 
