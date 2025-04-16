@@ -3,7 +3,7 @@
 set -ex
 
 function yq4 {
-  VERSION_REGEX=" version 4\.[0-9]+\.[0-9]$"
+  VERSION_REGEX=" version v?4\.[0-9]+\.[0-9]$"
   if [[ "`yq --version`" =~ $VERSION_REGEX ]]; then
     # installed yq version is v4 -> we are OK
     echo yq
