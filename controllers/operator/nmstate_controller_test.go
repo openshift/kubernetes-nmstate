@@ -556,6 +556,7 @@ func copyManifests(manifestsDir string) error {
 		"../../deploy/crds/nmstate.io_nodenetworkconfigurationpolicies.yaml":   "kubernetes-nmstate/crds/",
 		"../../deploy/crds/nmstate.io_nodenetworkstates.yaml":                  "kubernetes-nmstate/crds/",
 		"../../deploy/handler/namespace.yaml":                                  "kubernetes-nmstate/namespace/",
+		"../../deploy/handler/network_policy.yaml":                             "kubernetes-nmstate/netpol/handler.yaml",
 		"../../deploy/handler/operator.yaml":                                   "kubernetes-nmstate/handler/handler.yaml",
 		"../../deploy/handler/service_account.yaml":                            "kubernetes-nmstate/rbac/",
 		"../../deploy/handler/role.yaml":                                       "kubernetes-nmstate/rbac/",
