@@ -21,7 +21,7 @@ IMAGES=${IMAGE}
 for arch in $ARCHS; do
     podman build \
         --manifest ${IMAGE} \
-        --arch $(uname -m) --build-arg TARGETARCH=${arch} $@ --tag ${IMAGE}.${arch} ./
+        --arch ${arch} --build-arg TARGETARCH=${arch} $@ --tag ${IMAGE}.${arch} ./
 done
 
 if [ ! "$SKIP_PUSH" == "true" ]; then
