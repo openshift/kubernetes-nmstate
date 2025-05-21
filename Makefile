@@ -84,7 +84,7 @@ export SSH ?= ./cluster/ssh.sh
 export KUBECTL ?= ./cluster/kubectl.sh
 
 KUBECTL ?= ./cluster/kubectl.sh
-OPERATOR_SDK_VERSION ?= 1.22.2
+OPERATOR_SDK_VERSION ?= 1.37.0
 
 GINKGO_VERSION ?= v2.22.1
 GINKGO = GOFLAGS=-mod=mod go run github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)
@@ -180,7 +180,7 @@ check-bundle: bundle
 	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
 
 check-ocp-bundle: ocp-update-bundle-manifests
-	./hack/check-gen.sh ocp-update-bundle-manifests
+	git diff --exit-code -I'^    createdAt: ' -s bundle || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
 
 generate: gen-k8s gen-crds gen-rbac
 
@@ -293,7 +293,7 @@ bundle-build:
 
 # Build the index
 index-build: bundle-build
-	$(OPM) index add --bundles $(BUNDLE_IMG) --tag $(INDEX_IMG) --build-tool $(IMAGE_BUILDER) --binary-image quay.io/operator-framework/opm:v1.24.0
+	$(OPM) index add --bundles $(BUNDLE_IMG) --tag $(INDEX_IMG) --build-tool $(IMAGE_BUILDER) --binary-image quay.io/operator-framework/opm:v${OPERATOR_SDK_VERSION}-amd64
 
 bundle-push: bundle-build
 	$(IMAGE_BUILDER) push $(BUNDLE_IMG)
