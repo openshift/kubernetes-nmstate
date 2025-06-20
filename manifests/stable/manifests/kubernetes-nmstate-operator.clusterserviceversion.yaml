@@ -17,7 +17,7 @@ metadata:
     categories: OpenShift Optional
     certified: "false"
     containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.19
-    createdAt: "2025-05-26T05:44:43Z"
+    createdAt: "2025-06-20T05:47:21Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     olm.skipRange: '>=4.3.0 <4.19.0'
