@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -243,8 +244,8 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	return ctrl.Result{}, nil
 }
 
-func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	allPolicies := handler.TypedMapFunc[*corev1.Node, reconcile.Request](
+func (r *NodeNetworkConfigurationPolicyReconciler) allPolicies() handler.TypedMapFunc[*corev1.Node, reconcile.Request] {
+	return handler.TypedMapFunc[*corev1.Node, reconcile.Request](
 		func(context.Context, *corev1.Node) []reconcile.Request {
 			log := r.Log.WithName("allPolicies")
 			allPoliciesAsRequest := []reconcile.Request{}
@@ -254,6 +255,9 @@ func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Man
 				log.Error(err, "failed listing all NodeNetworkConfigurationPolicies to re-reconcile them after node created or updated")
 				return []reconcile.Request{}
 			}
+			sort.Slice(policyList.Items, func(i, j int) bool {
+				return policyList.Items[i].Name < policyList.Items[j].Name
+			})
 			for policyIndex := range policyList.Items {
 				policy := policyList.Items[policyIndex]
 				allPoliciesAsRequest = append(allPoliciesAsRequest, reconcile.Request{
@@ -263,6 +267,10 @@ func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Man
 			}
 			return allPoliciesAsRequest
 		})
+}
+
+func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	allPolicies := r.allPolicies()
 
 	// Reconcile NNCP if they are created/updated/deleted or
 	// Node is updated (for example labels are changed), node creation event

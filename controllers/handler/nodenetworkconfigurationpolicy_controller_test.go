@@ -215,4 +215,112 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 				shouldUpdateUnavailableNodeCount: false,
 			}),
 	)
+
+	Describe("allPolicies function", func() {
+		It("should return policies in alphanumerical order by name", func() {
+			// Create test policies with names in non-alphabetical order
+			policies := []nmstatev1.NodeNetworkConfigurationPolicy{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "zebra-policy",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "alpha-policy",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "beta-policy",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "1-numeric-policy",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "10-numeric-policy",
+					},
+				},
+			}
+
+			// Create a fake client with the test policies
+			s := scheme.Scheme
+			s.AddKnownTypes(nmstatev1.GroupVersion, &nmstatev1.NodeNetworkConfigurationPolicy{}, &nmstatev1.NodeNetworkConfigurationPolicyList{})
+
+			objs := make([]runtime.Object, len(policies))
+			for i := range policies {
+				objs[i] = &policies[i]
+			}
+
+			clb := fake.ClientBuilder{}
+			clb.WithScheme(s)
+			clb.WithRuntimeObjects(objs...)
+			cl := clb.Build()
+
+			reconciler := NodeNetworkConfigurationPolicyReconciler{
+				Client: cl,
+				Log:    ctrl.Log.WithName("controllers").WithName("NodeNetworkConfigurationPolicy"),
+			}
+
+			// Get the allPolicies function
+			allPolicies := reconciler.allPolicies()
+
+			// Call the function with a dummy node
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node",
+				},
+			}
+
+			requests := allPolicies(context.TODO(), node)
+
+			// Verify the order is correct
+			expectedOrder := []string{
+				"1-numeric-policy",
+				"10-numeric-policy",
+				"alpha-policy",
+				"beta-policy",
+				"zebra-policy",
+			}
+
+			Expect(requests).To(HaveLen(len(expectedOrder)))
+			for i, expectedName := range expectedOrder {
+				Expect(requests[i].NamespacedName.Name).To(Equal(expectedName))
+			}
+		})
+
+		It("should return empty slice when no policies exist", func() {
+			// Create a fake client with no policies
+			s := scheme.Scheme
+			s.AddKnownTypes(nmstatev1.GroupVersion, &nmstatev1.NodeNetworkConfigurationPolicy{}, &nmstatev1.NodeNetworkConfigurationPolicyList{})
+
+			clb := fake.ClientBuilder{}
+			clb.WithScheme(s)
+			cl := clb.Build()
+
+			reconciler := NodeNetworkConfigurationPolicyReconciler{
+				Client: cl,
+				Log:    ctrl.Log.WithName("controllers").WithName("NodeNetworkConfigurationPolicy"),
+			}
+
+			// Get the allPolicies function
+			allPolicies := reconciler.allPolicies()
+
+			// Call the function with a dummy node
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node",
+				},
+			}
+
+			requests := allPolicies(context.TODO(), node)
+
+			// Verify empty result
+			Expect(requests).To(BeEmpty())
+		})
+	})
 })
