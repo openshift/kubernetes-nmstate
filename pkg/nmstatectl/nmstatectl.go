@@ -97,6 +97,10 @@ func Set(desiredState nmstate.State, timeout time.Duration) (string, error) {
 	return setOutput, err
 }
 
+func ShowRevertManifest(revertedState nmstate.State) (string, error) {
+	return nmstatectl([]string{"gc", string(revertedState.Raw)})
+}
+
 func Commit() (string, error) {
 	return nmstatectl([]string{"commit"})
 }

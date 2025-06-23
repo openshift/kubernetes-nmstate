@@ -181,3 +181,43 @@ func ApplyDesiredState(cli client.Client, desiredState shared.State) (string, er
 	commandOutput := fmt.Sprintf("setOutput: %s \n", setOutput)
 	return commandOutput, nil
 }
+
+func RevertDesiredState(cli client.Client, desiredState shared.State) (string, error) {
+	if string(desiredState.Raw) == "" {
+		return "Ignoring empty desired state", nil
+	}
+
+	// Before apply we get the probes that are working fine, they should be
+	// working fine after apply
+	probes := probe.Select(cli)
+
+	// Rollback before Apply to remove pending checkpoints (for example handler pod restarted
+	// before Commit)
+	nmstatectl.Rollback()
+
+	// Make nmstatectl generate the yaml reverting configuration from the NNCP. Then apply it.
+	desiredRevertedYaml, err := nmstatectl.ShowRevertManifest(desiredState)
+	if err != nil {
+		return "", err
+	}
+
+	desiredRevertedState := shared.State{Raw: []byte(desiredRevertedYaml)}
+	setOutput, err := nmstatectl.Set(desiredRevertedState, DesiredStateConfigurationTimeout)
+	if err != nil {
+		return setOutput, err
+	}
+
+	err = probe.Run(cli, probes)
+	if err != nil {
+		return "", rollback(cli, probes, errors.Wrap(err, "failed runnig probes after network changes"))
+	}
+
+	commitOutput, err := nmstatectl.Commit()
+	if err != nil {
+		// We cannot rollback if commit fails, just return the error
+		return commitOutput, err
+	}
+
+	commandOutput := fmt.Sprintf("setOutput: %s \n", setOutput)
+	return commandOutput, nil
+}

@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -62,7 +63,8 @@ import (
 )
 
 const (
-	ReconcileFailed = "ReconcileFailed"
+	ReconcileFailed                             = "ReconcileFailed"
+	NodeNetworkConfigurationPolicyFinalizerName = "nmstate.io/nodenetworkconfigurationpolicy-finalizer"
 )
 
 var (
@@ -97,7 +99,9 @@ var (
 			return false
 		},
 	}
-	nmstatectlShowFn = nmstatectl.Show
+	nmstatectlShowFn            = nmstatectl.Show
+	nmstateApplyDesiredStateFn  = nmstate.ApplyDesiredState
+	nmstateRevertDesiredStateFn = nmstate.RevertDesiredState
 )
 
 // NodeNetworkConfigurationPolicyReconciler reconciles a NodeNetworkConfigurationPolicy object
@@ -145,6 +149,41 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		log.Error(err, "Error retrieving policy")
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
+	}
+
+	// Handle finalizer logic
+	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
+		// Add finalizer if not present
+		if !controllerutil.ContainsFinalizer(instance, NodeNetworkConfigurationPolicyFinalizerName) {
+			controllerutil.AddFinalizer(instance, NodeNetworkConfigurationPolicyFinalizerName)
+			err := r.Client.Update(context.TODO(), instance)
+			if err != nil {
+				log.Error(err, "Failed to add finalizer")
+				return ctrl.Result{}, err
+			}
+			log.Info("Added finalizer to NodeNetworkConfigurationPolicy")
+			return ctrl.Result{}, nil
+		}
+	} else {
+		// The policy is being deleted
+		if controllerutil.ContainsFinalizer(instance, NodeNetworkConfigurationPolicyFinalizerName) {
+			// Run cleanup logic
+			err := r.finalizeNodeNetworkConfigurationPolicy(log, instance)
+			if err != nil {
+				log.Error(err, "Failed to finalize NodeNetworkConfigurationPolicy")
+				return ctrl.Result{}, err
+			}
+
+			// Remove the finalizer
+			controllerutil.RemoveFinalizer(instance, NodeNetworkConfigurationPolicyFinalizerName)
+			err = r.Client.Update(context.TODO(), instance)
+			if err != nil {
+				log.Error(err, "Failed to remove finalizer")
+				return ctrl.Result{}, err
+			}
+			log.Info("Finalizer removed from NodeNetworkConfigurationPolicy")
+		}
+		return ctrl.Result{}, nil
 	}
 
 	if !policyconditions.IsProgressing(&instance.Status.Conditions) {
@@ -223,7 +262,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		policyconditions.Update(r.Client, r.APIClient, request.NamespacedName)
 	}
 
-	nmstateOutput, err := nmstate.ApplyDesiredState(r.APIClient, enactmentInstance.Status.DesiredState)
+	nmstateOutput, err := nmstateApplyDesiredStateFn(r.APIClient, enactmentInstance.Status.DesiredState)
 	if err != nil {
 		errmsg := fmt.Errorf("error reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
 			nodeName, nmstateOutput, err)
@@ -533,4 +572,34 @@ func (r *NodeNetworkConfigurationPolicyReconciler) readNNS(name string) (*nmstat
 		return nil, err
 	}
 	return nns, nil
+}
+
+func (r *NodeNetworkConfigurationPolicyReconciler) finalizeNodeNetworkConfigurationPolicy(log logr.Logger, policy *nmstatev1.NodeNetworkConfigurationPolicy) error {
+	// Cleanup logic for NodeNetworkConfigurationPolicy
+	log.Info("chocobomb")
+
+	// TODO: Add more comprehensive cleanup logic here later
+	// For now, this is the scaffolding that logs the required message
+
+	enactmentInstance, err := r.enactmentForPolicy(policy)
+	if err != nil {
+		log.Error(err, "error getting enactment for policy")
+		return err
+	}
+
+	nmstateOutput, err := nmstateRevertDesiredStateFn(r.APIClient, enactmentInstance.Status.DesiredState)
+	if err != nil {
+		errmsg := fmt.Errorf("error deleting/reverting NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
+			nodeName, nmstateOutput, err)
+		log.Error(errmsg, fmt.Sprintf("Deleting/reverting network configuration, manual intervention needed: %s", nmstateOutput))
+		if r.Recorder != nil {
+			r.Recorder.Event(policy, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
+		}
+		return nil
+	}
+	log.Info("nmstate", "output", nmstateOutput)
+
+	r.forceNNSRefresh(nodeName)
+
+	return nil
 }
