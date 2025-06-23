@@ -233,7 +233,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller finalizer logic", fu
 	BeforeEach(func() {
 		// Mock external functions
 		nmstatectlShowFn = func() (string, error) { return `{"interfaces": []}`, nil }
-		nmstateApplyDesiredRevertStateFn = func(client.Client, shared.State) (string, error) {
+		nmstateRevertDesiredStateFn = func(client.Client, shared.State) (string, error) {
 			return "revert success", nil
 		}
 
@@ -368,7 +368,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller finalizer logic", fu
 		Context("and finalization fails due to nmstate error", func() {
 			BeforeEach(func() {
 				// Mock nmstate function to fail
-				nmstateApplyDesiredRevertStateFn = func(client.Client, shared.State) (string, error) {
+				nmstateRevertDesiredStateFn = func(client.Client, shared.State) (string, error) {
 					return "revert failed", fmt.Errorf("nmstate revert error")
 				}
 
