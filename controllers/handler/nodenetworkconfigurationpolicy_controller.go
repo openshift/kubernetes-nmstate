@@ -162,7 +162,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 				return ctrl.Result{}, err
 			}
 			log.Info("Added finalizer to NodeNetworkConfigurationPolicy")
-			return ctrl.Result{}, nil
+			// return ctrl.Result{}, nil
 		}
 	} else {
 		// The policy is being deleted
@@ -576,10 +576,10 @@ func (r *NodeNetworkConfigurationPolicyReconciler) readNNS(name string) (*nmstat
 
 func (r *NodeNetworkConfigurationPolicyReconciler) finalizeNodeNetworkConfigurationPolicy(log logr.Logger, policy *nmstatev1.NodeNetworkConfigurationPolicy) error {
 	// Check if revert on delete is enabled
-	if policy.Spec.RevertOnDelete == nil || !*policy.Spec.RevertOnDelete {
-		log.Info("RevertOnDelete is disabled, skipping network configuration revert")
-		return nil
-	}
+	// if policy.Spec.RevertOnDelete == nil || !*policy.Spec.RevertOnDelete {
+	// 	log.Info("RevertOnDelete is disabled, skipping network configuration revert")
+	// 	return nil
+	// }
 
 	// Cleanup logic for NodeNetworkConfigurationPolicy
 	log.Info("RevertOnDelete is enabled, reverting network configuration changes")
@@ -587,7 +587,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) finalizeNodeNetworkConfigurat
 	enactmentInstance, err := r.enactmentForPolicy(policy)
 	if err != nil {
 		log.Error(err, "error getting enactment for policy")
-		return err
+		return nil
 	}
 
 	nmstateOutput, err := nmstateRevertDesiredStateFn(r.APIClient, enactmentInstance.Status.DesiredState)
