@@ -79,6 +79,13 @@ spec:
                   Selector which must match a node's labels for the policy to be scheduled on that node.
                   More info: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
                 type: object
+              revertOnDelete:
+                default: false
+                description: |-
+                  RevertOnDelete specifies whether to revert network configuration changes when the policy is deleted.
+                  When set to true, the controller will attempt to revert the network configuration to its previous state.
+                  When set to false (default), the controller will not perform any revert operations.
+                type: boolean
             type: object
           status:
             description: NodeNetworkConfigurationPolicyStatus defines the observed
@@ -186,6 +193,13 @@ spec:
                   Selector which must match a node's labels for the policy to be scheduled on that node.
                   More info: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
                 type: object
+              revertOnDelete:
+                default: false
+                description: |-
+                  RevertOnDelete specifies whether to revert network configuration changes when the policy is deleted.
+                  When set to true, the controller will attempt to revert the network configuration to its previous state.
+                  When set to false (default), the controller will not perform any revert operations.
+                type: boolean
             type: object
           status:
             description: NodeNetworkConfigurationPolicyStatus defines the observed

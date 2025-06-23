@@ -575,11 +575,14 @@ func (r *NodeNetworkConfigurationPolicyReconciler) readNNS(name string) (*nmstat
 }
 
 func (r *NodeNetworkConfigurationPolicyReconciler) finalizeNodeNetworkConfigurationPolicy(log logr.Logger, policy *nmstatev1.NodeNetworkConfigurationPolicy) error {
-	// Cleanup logic for NodeNetworkConfigurationPolicy
-	log.Info("chocobomb")
+	// Check if revert on delete is enabled
+	if policy.Spec.RevertOnDelete == nil || !*policy.Spec.RevertOnDelete {
+		log.Info("RevertOnDelete is disabled, skipping network configuration revert")
+		return nil
+	}
 
-	// TODO: Add more comprehensive cleanup logic here later
-	// For now, this is the scaffolding that logs the required message
+	// Cleanup logic for NodeNetworkConfigurationPolicy
+	log.Info("RevertOnDelete is enabled, reverting network configuration changes")
 
 	enactmentInstance, err := r.enactmentForPolicy(policy)
 	if err != nil {
