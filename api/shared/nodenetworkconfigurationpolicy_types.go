@@ -43,6 +43,13 @@ type NodeNetworkConfigurationPolicySpec struct {
 	// of machines that can be updating at a time. Default is "50%".
 	// +optional
 	MaxUnavailable *intstr.IntOrString `json:"maxUnavailable,omitempty"`
+
+	// RevertOnDelete specifies whether to revert network configuration changes when the policy is deleted.
+	// When set to true, the controller will attempt to revert the network configuration to its previous state.
+	// When set to false (default), the controller will not perform any revert operations.
+	// +optional
+	// +kubebuilder:default=false
+	RevertOnDelete *bool `json:"revertOnDelete,omitempty"`
 }
 
 // NodeNetworkConfigurationPolicyStatus defines the observed state of NodeNetworkConfigurationPolicy
