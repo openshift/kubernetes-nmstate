@@ -19,6 +19,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
@@ -216,3 +218,293 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 			}),
 	)
 })
+
+var _ = Describe("NodeNetworkConfigurationPolicy controller finalizer logic", func() {
+	var (
+		reconciler NodeNetworkConfigurationPolicyReconciler
+		cl         client.Client
+		policy     *nmstatev1.NodeNetworkConfigurationPolicy
+		node       *corev1.Node
+		nns        *nmstatev1beta1.NodeNetworkState
+		enactment  *nmstatev1beta1.NodeNetworkConfigurationEnactment
+		s          *runtime.Scheme
+	)
+
+	BeforeEach(func() {
+		// Mock external functions
+		nmstatectlShowFn = func() (string, error) { return `{"interfaces": []}`, nil }
+		nmstateApplyDesiredRevertStateFn = func(client.Client, shared.State) (string, error) {
+			return "revert success", nil
+		}
+
+		// Setup scheme
+		s = scheme.Scheme
+		s.AddKnownTypes(nmstatev1beta1.GroupVersion,
+			&nmstatev1beta1.NodeNetworkState{},
+			&nmstatev1beta1.NodeNetworkConfigurationEnactment{},
+			&nmstatev1beta1.NodeNetworkConfigurationEnactmentList{},
+		)
+		s.AddKnownTypes(nmstatev1.GroupVersion,
+			&nmstatev1.NodeNetworkConfigurationPolicy{},
+		)
+
+		// Create test objects
+		node = &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+
+		nns = &nmstatev1beta1.NodeNetworkState{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+
+		policy = &nmstatev1.NodeNetworkConfigurationPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-policy",
+				Generation: 1,
+			},
+			Spec: shared.NodeNetworkConfigurationPolicySpec{
+				DesiredState: shared.State{Raw: []byte(`{"interfaces": [{"name": "eth0", "type": "ethernet"}]}`)},
+			},
+		}
+
+		enactment = &nmstatev1beta1.NodeNetworkConfigurationEnactment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   shared.EnactmentKey(nodeName, policy.Name).Name,
+				Labels: map[string]string{shared.EnactmentPolicyLabel: policy.Name},
+			},
+			Status: shared.NodeNetworkConfigurationEnactmentStatus{
+				PolicyGeneration: policy.Generation,
+				DesiredState:     policy.Spec.DesiredState,
+			},
+		}
+
+		// Setup reconciler
+		reconciler = NodeNetworkConfigurationPolicyReconciler{
+			Log:    ctrl.Log.WithName("controllers").WithName("NodeNetworkConfigurationPolicy"),
+			Scheme: s,
+		}
+	})
+
+	Context("when policy is created without finalizer", func() {
+		BeforeEach(func() {
+			objs := []runtime.Object{policy, enactment, nns, node}
+			clb := fake.ClientBuilder{}
+			clb.WithScheme(s)
+			clb.WithRuntimeObjects(objs...)
+			clb.WithStatusSubresource(policy)
+			clb.WithStatusSubresource(enactment)
+			clb.WithStatusSubresource(nns)
+			cl = clb.Build()
+
+			reconciler.Client = cl
+			reconciler.APIClient = cl
+		})
+
+		It("should add finalizer and return", func() {
+			result, err := reconciler.Reconcile(context.TODO(), ctrl.Request{
+				NamespacedName: types.NamespacedName{Name: policy.Name},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
+
+			// Verify finalizer was added
+			updatedPolicy := &nmstatev1.NodeNetworkConfigurationPolicy{}
+			err = cl.Get(context.TODO(), types.NamespacedName{Name: policy.Name}, updatedPolicy)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedPolicy.Finalizers).To(ContainElement(NodeNetworkConfigurationPolicyFinalizerName))
+		})
+	})
+
+	Context("when policy is being deleted", func() {
+		BeforeEach(func() {
+			// Set deletion timestamp and add finalizer
+			now := metav1.Now()
+			policy.DeletionTimestamp = &now
+			policy.Finalizers = []string{NodeNetworkConfigurationPolicyFinalizerName}
+		})
+
+		Context("and finalization succeeds", func() {
+			BeforeEach(func() {
+				objs := []runtime.Object{policy, enactment, nns, node}
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(objs...)
+				clb.WithStatusSubresource(policy)
+				clb.WithStatusSubresource(enactment)
+				clb.WithStatusSubresource(nns)
+				cl = clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+			})
+
+			It("should finalize policy and remove finalizer", func() {
+				result, err := reconciler.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{Name: policy.Name},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(ctrl.Result{}))
+
+				// Verify finalizer was removed
+				updatedPolicy := &nmstatev1.NodeNetworkConfigurationPolicy{}
+				err = cl.Get(context.TODO(), types.NamespacedName{Name: policy.Name}, updatedPolicy)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updatedPolicy.Finalizers).ToNot(ContainElement(NodeNetworkConfigurationPolicyFinalizerName))
+
+				// Verify NNS was updated with force refresh label
+				updatedNNS := &nmstatev1beta1.NodeNetworkState{}
+				err = cl.Get(context.TODO(), types.NamespacedName{Name: nodeName}, updatedNNS)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updatedNNS.Labels).To(HaveKey(forceRefreshLabel))
+			})
+		})
+
+		Context("and finalization fails due to nmstate error", func() {
+			BeforeEach(func() {
+				// Mock nmstate function to fail
+				nmstateApplyDesiredRevertStateFn = func(client.Client, shared.State) (string, error) {
+					return "revert failed", fmt.Errorf("nmstate revert error")
+				}
+
+				objs := []runtime.Object{policy, enactment, nns, node}
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(objs...)
+				clb.WithStatusSubresource(policy)
+				clb.WithStatusSubresource(enactment)
+				clb.WithStatusSubresource(nns)
+				cl = clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+			})
+
+			It("should continue with finalizer removal despite nmstate error", func() {
+				result, err := reconciler.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{Name: policy.Name},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(ctrl.Result{}))
+
+				// Verify finalizer was still removed even though nmstate failed
+				updatedPolicy := &nmstatev1.NodeNetworkConfigurationPolicy{}
+				err = cl.Get(context.TODO(), types.NamespacedName{Name: policy.Name}, updatedPolicy)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updatedPolicy.Finalizers).ToNot(ContainElement(NodeNetworkConfigurationPolicyFinalizerName))
+			})
+		})
+
+		Context("and enactment is not found", func() {
+			BeforeEach(func() {
+				// Don't include enactment in objects
+				objs := []runtime.Object{policy, nns, node}
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(objs...)
+				clb.WithStatusSubresource(policy)
+				clb.WithStatusSubresource(nns)
+				cl = clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+			})
+
+			It("should fail finalization and return error", func() {
+				result, err := reconciler.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{Name: policy.Name},
+				})
+
+				Expect(err).To(HaveOccurred())
+				Expect(result).To(Equal(ctrl.Result{}))
+
+				// Verify finalizer was not removed
+				updatedPolicy := &nmstatev1.NodeNetworkConfigurationPolicy{}
+				err = cl.Get(context.TODO(), types.NamespacedName{Name: policy.Name}, updatedPolicy)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updatedPolicy.Finalizers).To(ContainElement(NodeNetworkConfigurationPolicyFinalizerName))
+			})
+		})
+
+		Context("and finalizer removal fails", func() {
+			BeforeEach(func() {
+				objs := []runtime.Object{policy, enactment, nns, node}
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(objs...)
+				clb.WithStatusSubresource(policy)
+				clb.WithStatusSubresource(enactment)
+				clb.WithStatusSubresource(nns)
+				cl = clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+
+				// Mock a client that fails on update
+				reconciler.Client = &mockFailingClient{Client: cl}
+			})
+
+			It("should return error when finalizer removal fails", func() {
+				result, err := reconciler.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{Name: policy.Name},
+				})
+
+				Expect(err).To(HaveOccurred())
+				Expect(result).To(Equal(ctrl.Result{}))
+			})
+		})
+	})
+
+	Context("when policy deletion timestamp is zero but finalizer is already present", func() {
+		BeforeEach(func() {
+			// Add finalizer but no deletion timestamp
+			policy.Finalizers = []string{NodeNetworkConfigurationPolicyFinalizerName}
+
+			objs := []runtime.Object{policy, enactment, nns, node}
+			clb := fake.ClientBuilder{}
+			clb.WithScheme(s)
+			clb.WithRuntimeObjects(objs...)
+			clb.WithStatusSubresource(policy)
+			clb.WithStatusSubresource(enactment)
+			clb.WithStatusSubresource(nns)
+			cl = clb.Build()
+
+			reconciler.Client = cl
+			reconciler.APIClient = cl
+		})
+
+		It("should proceed with normal reconciliation logic", func() {
+			result, err := reconciler.Reconcile(context.TODO(), ctrl.Request{
+				NamespacedName: types.NamespacedName{Name: policy.Name},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
+
+			// Verify finalizer is still present
+			updatedPolicy := &nmstatev1.NodeNetworkConfigurationPolicy{}
+			err = cl.Get(context.TODO(), types.NamespacedName{Name: policy.Name}, updatedPolicy)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedPolicy.Finalizers).To(ContainElement(NodeNetworkConfigurationPolicyFinalizerName))
+		})
+	})
+})
+
+// mockFailingClient wraps a client and makes Update calls fail
+type mockFailingClient struct {
+	client.Client
+}
+
+func (m *mockFailingClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	return fmt.Errorf("mock update failure")
+}
+
+func (m *mockFailingClient) Status() client.StatusWriter {
+	return m.Client.Status()
+}
