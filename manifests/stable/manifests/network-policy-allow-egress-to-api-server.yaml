@@ -1,0 +1,14 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-operator-egress-api-6443-olm
+spec:
+  podSelector:
+    matchLabels:
+      app: kubernetes-nmstate-operator
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 6443
+  policyTypes:
+    - Egress
