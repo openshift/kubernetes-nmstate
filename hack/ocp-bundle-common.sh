@@ -27,6 +27,7 @@ fi
 
 export BUNDLE_DIR="${BUNDLE_DIR:-manifests/${CHANNEL}}"
 MANIFEST_BASES_DIR=manifests/bases
+export MANIFESTS_DIR="${MANIFESTS_DIR:-build/_output/manifests}"
 
 if [ -z "${VERSION}" ]; then
     export VERSION="$($(yq4) '.spec.version' ${BUNDLE_DIR}/manifests/kubernetes-nmstate-operator.clusterserviceversion.yaml)"
