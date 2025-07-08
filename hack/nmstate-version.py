@@ -56,7 +56,7 @@ for link in links:
     # Find link to x86_64.log
     brew_r = requests.get(brews[0], verify=False)
     brew_page = brew_r.text
-    log_re = re.compile('"(https://download.devel.redhat.com/brewroot[^\'"]*/x86_64.log)"')
+    log_re = re.compile('"(https://download-01.beak-001.prod.iad2.dc.redhat.com/brewroot[^\'"]*/x86_64.log)"')
     logs = log_re.findall(brew_page)
     # Grab the NMState and NetworkManager versions from Brew logs
     log_r = requests.get(logs[0], verify=False)
