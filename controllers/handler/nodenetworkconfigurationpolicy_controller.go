@@ -230,22 +230,6 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	return ctrl.Result{}, nil
 }
 
-//func incrementNNCERetryCount(
-//	r *NodeNetworkConfigurationPolicyReconciler,
-//	instance *nmstatev1.NodeNetworkConfigurationPolicy,
-//	enactment *nmstatev1beta1.NodeNetworkConfigurationEnactment) error {
-//	enactmentKey := nmstateapi.EnactmentKey(nodeName, instance.Name)
-//	log := r.Log.WithValues("incrementNNCERetryCount", enactmentKey)
-//	log.Info(fmt.Sprintf("incrementing retryCount on %s", enactmentKey))
-//	return enactmentstatus.Update(
-//		r.APIClient,
-//		enactmentKey,
-//		func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
-//			status.RetryCount = enactment.Status.RetryCount + 1
-//		},
-//	)
-//}
-
 func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	allPoliciesFunc := allPolicies(r.Client, r.Log)
 
