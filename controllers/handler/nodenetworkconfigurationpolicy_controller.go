@@ -62,7 +62,9 @@ import (
 )
 
 const (
-	ReconcileFailed = "ReconcileFailed"
+	ReconcileFailed         = "ReconcileFailed"
+	Retrying                = "Retrying"
+	MaximumReconcileRetries = 5
 )
 
 var (
@@ -225,14 +227,42 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 
 	nmstateOutput, err := nmstate.ApplyDesiredState(r.APIClient, enactmentInstance.Status.DesiredState)
 	if err != nil {
-		errmsg := fmt.Errorf("error reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
-			nodeName, nmstateOutput, err)
-		enactmentConditions.NotifyFailedToConfigure(errmsg)
-		log.Error(errmsg, fmt.Sprintf("Rolling back network configuration, manual intervention needed: %s", nmstateOutput))
-		if r.Recorder != nil {
-			r.Recorder.Event(instance, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
+		enactmentCopy := enactmentInstance.DeepCopy()
+		enactmentCopy.Status.RetryCount += 1
+
+		retryCount := enactmentCopy.Status.RetryCount
+
+		err2 := enactmentstatus.Update(
+			r.APIClient,
+			nmstateapi.EnactmentKey(nodeName, instance.Name),
+			func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
+				status.RetryCount = enactmentCopy.Status.RetryCount
+			},
+		)
+		if err2 != nil {
+			errmsg := fmt.Errorf("error failed to update enactment status: %v", err2)
+			enactmentConditions.NotifyFailedToConfigure(errmsg)
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
+
+		if retryCount < MaximumReconcileRetries {
+			errmsg := fmt.Errorf("error (Retry: %d/5)  reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
+				retryCount, nodeName, nmstateOutput, err)
+			enactmentConditions.NotifyProgressing()
+			log.Error(errmsg, fmt.Sprintf("Rolling back network configuration, manual intervention needed: %s", nmstateOutput))
+			if r.Recorder != nil {
+				r.Recorder.Event(instance, corev1.EventTypeWarning, Retrying, errmsg.Error())
+			}
+			return ctrl.Result{RequeueAfter: time.Duration(retryCount) * time.Second}, nil
+		} else {
+			errmsg := fmt.Errorf("error reached max tries reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
+				nodeName, nmstateOutput, err)
+			enactmentConditions.NotifyFailedToConfigure(errmsg)
+			if r.Recorder != nil {
+				r.Recorder.Event(instance, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
+			}
+			return ctrl.Result{}, nil
+		}
 	}
 	log.Info("nmstate", "output", nmstateOutput)
 
