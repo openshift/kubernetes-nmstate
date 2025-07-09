@@ -43,6 +43,9 @@ type NodeNetworkConfigurationEnactmentStatus struct {
 	Conditions ConditionList `json:"conditions,omitempty"`
 
 	Features []string `json:"features,omitempty"`
+
+	// +kubebuilder:default=0
+	RetryCount int `json:"retryCount"`
 }
 
 type NodeNetworkConfigurationEnactmentCapturedState struct {
