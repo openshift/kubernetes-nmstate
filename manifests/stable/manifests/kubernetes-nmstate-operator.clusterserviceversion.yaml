@@ -17,7 +17,7 @@ metadata:
     categories: OpenShift Optional
     certified: "false"
     containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.19
-    createdAt: "2025-06-26T05:47:34Z"
+    createdAt: "2025-07-10T05:39:16Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     olm.skipRange: '>=4.3.0 <4.20.0'
@@ -206,18 +206,20 @@ spec:
                         value: "6060"
                       - name: RUN_OPERATOR
                       - name: HANDLER_IMAGE
-                        value: quay.io/openshift/origin-kubernetes-nmstate-handler:4.19
+                        value: quay.io/openshift/origin-kubernetes-nmstate-handler:4.20
                       - name: PLUGIN_IMAGE
-                        value: quay.io/openshift/origin-nmstate-console-plugin:4.19
+                        value: quay.io/openshift/origin-nmstate-console-plugin:4.20
                       - name: HANDLER_IMAGE_PULL_POLICY
                         value: IfNotPresent
                       - name: HANDLER_NAMESPACE
                         value: openshift-nmstate
                       - name: MONITORING_NAMESPACE
                         value: openshift-monitoring
+                      - name: OPERATOR_NAMESPACE
+                        value: openshift-nmstate
                       - name: KUBE_RBAC_PROXY_IMAGE
-                        value: quay.io/openshift/origin-kube-rbac-proxy:4.19
-                    image: quay.io/openshift/origin-kubernetes-nmstate-operator:4.19
+                        value: quay.io/openshift/origin-kube-rbac-proxy:4.20
+                    image: quay.io/openshift/origin-kubernetes-nmstate-operator:4.20
                     imagePullPolicy: IfNotPresent
                     livenessProbe:
                       failureThreshold: 3
