@@ -27,6 +27,7 @@ import (
 	"github.com/pkg/errors"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/client-go/util/workqueue"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -63,7 +64,7 @@ import (
 
 const (
 	ReconcileFailed         = "ReconcileFailed"
-	Retrying                = "Retrying"
+	MaximumTimeBackoff      = 30
 	MaximumReconcileRetries = 5
 )
 
@@ -227,42 +228,34 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 
 	nmstateOutput, err := nmstate.ApplyDesiredState(r.APIClient, enactmentInstance.Status.DesiredState)
 	if err != nil {
-		enactmentCopy := enactmentInstance.DeepCopy()
-		enactmentCopy.Status.RetryCount += 1
+		errmsg := fmt.Errorf("error reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
+			nodeName, nmstateOutput, err)
+		enactmentConditions.NotifyFailedToConfigure(errmsg)
+		log.Error(errmsg, fmt.Sprintf("Rolling back network configuration, manual intervention needed: %s", nmstateOutput))
 
-		retryCount := enactmentCopy.Status.RetryCount
+		retries := enactmentInstance.Status.RetryCount
 
-		err2 := enactmentstatus.Update(
-			r.APIClient,
-			nmstateapi.EnactmentKey(nodeName, instance.Name),
-			func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
-				status.RetryCount = enactmentCopy.Status.RetryCount
-			},
-		)
-		if err2 != nil {
-			errmsg := fmt.Errorf("error failed to update enactment status: %v", err2)
-			enactmentConditions.NotifyFailedToConfigure(errmsg)
-			return ctrl.Result{}, err
-		}
-
-		if retryCount < MaximumReconcileRetries {
-			errmsg := fmt.Errorf("error (Retry: %d/5)  reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
-				retryCount, nodeName, nmstateOutput, err)
-			enactmentConditions.NotifyProgressing()
-			log.Error(errmsg, fmt.Sprintf("Rolling back network configuration, manual intervention needed: %s", nmstateOutput))
-			if r.Recorder != nil {
-				r.Recorder.Event(instance, corev1.EventTypeWarning, Retrying, errmsg.Error())
-			}
-			return ctrl.Result{RequeueAfter: time.Duration(retryCount) * time.Second}, nil
-		} else {
-			errmsg := fmt.Errorf("error reached max tries reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
-				nodeName, nmstateOutput, err)
+		if retries >= MaximumReconcileRetries {
+			errmsg := fmt.Errorf("error max tries (%d) reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
+				MaximumReconcileRetries, nodeName, nmstateOutput, err)
 			enactmentConditions.NotifyFailedToConfigure(errmsg)
 			if r.Recorder != nil {
 				r.Recorder.Event(instance, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
 			}
 			return ctrl.Result{}, nil
 		}
+		log.Info("retrying reconciliation", "retries", retries)
+
+		err := incrementNNCERetryCount(r, instance, enactmentInstance)
+		if err != nil {
+			errmsg := fmt.Errorf("error incrementing NNCE retryCounter on node %s: %q",
+				nodeName, err)
+			if r.Recorder != nil {
+				r.Recorder.Event(instance, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
+			}
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{Requeue: true}, err
 	}
 	log.Info("nmstate", "output", nmstateOutput)
 
@@ -271,6 +264,22 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	r.forceNNSRefresh(nodeName)
 
 	return ctrl.Result{}, nil
+}
+
+func incrementNNCERetryCount(
+	r *NodeNetworkConfigurationPolicyReconciler,
+	instance *nmstatev1.NodeNetworkConfigurationPolicy,
+	enactment *nmstatev1beta1.NodeNetworkConfigurationEnactment) error {
+	enactmentKey := nmstateapi.EnactmentKey(nodeName, instance.Name)
+	log := r.Log.WithValues("incrementNNCERetryCount", enactmentKey)
+	log.Info(fmt.Sprintf("incrementing retryCount on %s", enactmentKey))
+	return enactmentstatus.Update(
+		r.APIClient,
+		enactmentKey,
+		func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
+			status.RetryCount = enactment.Status.RetryCount + 1
+		},
+	)
 }
 
 func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -297,7 +306,13 @@ func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Man
 	// Reconcile NNCP if they are created/updated/deleted or
 	// Node is updated (for example labels are changed), node creation event
 	// is not needed since all NNCPs are going to be Reconcile at node startup.
-	c, err := controller.New("NodeNetworkConfigurationPolicy", mgr, controller.Options{Reconciler: r})
+	c, err := controller.New(
+		"NodeNetworkConfigurationPolicy",
+		mgr,
+		controller.Options{
+			Reconciler:  r,
+			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](time.Second, time.Second*MaximumTimeBackoff),
+		})
 	if err != nil {
 		return errors.Wrap(err, "failed to create NodeNetworkConfigurationPolicy controller")
 	}
