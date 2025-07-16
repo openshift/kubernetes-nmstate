@@ -16,8 +16,8 @@ metadata:
     capabilities: Basic Install
     categories: OpenShift Optional
     certified: "false"
-    containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.19
-    createdAt: "2025-07-07T13:40:29Z"
+    containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.22
+    createdAt: "2026-05-14T05:36:09Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     olm.skipRange: '>=4.3.0 <4.20.0'
@@ -88,6 +88,8 @@ spec:
                 - admissionregistration.k8s.io
               resources:
                 - mutatingwebhookconfigurations
+                - validatingadmissionpolicies
+                - validatingadmissionpolicybindings
               verbs:
                 - '*'
             - apiGroups:
@@ -107,6 +109,14 @@ spec:
               verbs:
                 - '*'
             - apiGroups:
+                - config.openshift.io
+              resources:
+                - apiservers
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
                 - console.openshift.io
               resources:
                 - consoleplugins
@@ -115,6 +125,7 @@ spec:
             - apiGroups:
                 - monitoring.coreos.com
               resources:
+                - prometheusrules
                 - servicemonitors
               verbs:
                 - create
@@ -183,11 +194,6 @@ spec:
                             - key: node-role.kubernetes.io/control-plane
                               operator: Exists
                         weight: 10
-                      - preference:
-                          matchExpressions:
-                            - key: node-role.kubernetes.io/master
-                              operator: Exists
-                        weight: 1
                 containers:
                   - args:
                       - --zap-time-encoding=iso8601
@@ -206,18 +212,20 @@ spec:
                         value: "6060"
                       - name: RUN_OPERATOR
                       - name: HANDLER_IMAGE
-                        value: quay.io/openshift/origin-kubernetes-nmstate-handler:4.19
+                        value: quay.io/openshift/origin-kubernetes-nmstate-handler:4.20
                       - name: PLUGIN_IMAGE
-                        value: quay.io/openshift/origin-nmstate-console-plugin:4.19
+                        value: quay.io/openshift/origin-nmstate-console-plugin:4.20
                       - name: HANDLER_IMAGE_PULL_POLICY
                         value: IfNotPresent
                       - name: HANDLER_NAMESPACE
                         value: openshift-nmstate
                       - name: MONITORING_NAMESPACE
                         value: openshift-monitoring
+                      - name: OPERATOR_NAMESPACE
+                        value: openshift-nmstate
                       - name: KUBE_RBAC_PROXY_IMAGE
-                        value: quay.io/openshift/origin-kube-rbac-proxy:4.19
-                    image: quay.io/openshift/origin-kubernetes-nmstate-operator:4.19
+                        value: quay.io/openshift/origin-kube-rbac-proxy:4.20
+                    image: quay.io/openshift/origin-kubernetes-nmstate-operator:4.20
                     imagePullPolicy: IfNotPresent
                     livenessProbe:
                       failureThreshold: 3
@@ -244,7 +252,7 @@ spec:
                     resources:
                       limits:
                         cpu: 500m
-                        memory: 128Mi
+                        memory: 1Gi
                       requests:
                         cpu: 60m
                         memory: 30Mi
@@ -253,6 +261,7 @@ spec:
                       capabilities:
                         drop:
                           - ALL
+                    terminationMessagePolicy: FallbackToLogsOnError
                 priorityClassName: system-cluster-critical
                 securityContext:
                   runAsNonRoot: true
