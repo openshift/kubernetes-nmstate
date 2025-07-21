@@ -195,7 +195,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 				currentUnavailableNodeCount:      1,
 				expectedUnavailableNodeCount:     1,
 				previousEnactmentConditions:      func(*shared.ConditionList, string) {},
-				expectedReconcileResult:          ctrl.Result{RequeueAfter: nodeRunningUpdateRetryTime},
+				expectedReconcileResult:          ctrl.Result{Requeue: true},
 				shouldUpdateUnavailableNodeCount: false,
 			}),
 		Entry("One node applying policy with Progressing enactment, should succeed incrementing UnavailableNodeCount",
@@ -211,7 +211,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 				currentUnavailableNodeCount:      1,
 				expectedUnavailableNodeCount:     1,
 				previousEnactmentConditions:      conditions.SetPending,
-				expectedReconcileResult:          ctrl.Result{RequeueAfter: nodeRunningUpdateRetryTime},
+				expectedReconcileResult:          ctrl.Result{Requeue: true},
 				shouldUpdateUnavailableNodeCount: false,
 			}),
 	)

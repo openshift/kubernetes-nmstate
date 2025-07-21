@@ -50,7 +50,6 @@ import (
 	nmstatev1beta1 "github.com/nmstate/kubernetes-nmstate/api/v1beta1"
 	"github.com/nmstate/kubernetes-nmstate/pkg/bridge"
 	nmstate "github.com/nmstate/kubernetes-nmstate/pkg/client"
-	"github.com/nmstate/kubernetes-nmstate/pkg/enactment"
 	"github.com/nmstate/kubernetes-nmstate/pkg/enactmentstatus"
 	enactmentconditions "github.com/nmstate/kubernetes-nmstate/pkg/enactmentstatus/conditions"
 	"github.com/nmstate/kubernetes-nmstate/pkg/environment"
@@ -63,14 +62,11 @@ import (
 )
 
 const (
-	ReconcileFailed         = "ReconcileFailed"
-	MaximumTimeBackoff      = 30
-	MaximumReconcileRetries = 5
+	MaximumTimeBackoff = 30
 )
 
 var (
 	nodeName                                        string
-	nodeRunningUpdateRetryTime                      = 5 * time.Second
 	onCreateOrUpdateWithDifferentGenerationOrDelete = predicate.TypedFuncs[*nmstatev1.NodeNetworkConfigurationPolicy]{
 		CreateFunc: func(createEvent event.TypedCreateEvent[*nmstatev1.NodeNetworkConfigurationPolicy]) bool {
 			return true
@@ -196,25 +192,13 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		return ctrl.Result{}, err
 	}
 
-	_, enactmentCountByCondition, err := enactment.CountByPolicy(r.APIClient, instance)
-	if err != nil {
-		log.Error(err, "Error getting enactment counts")
-		return ctrl.Result{}, err
-	}
-	if enactmentCountByCondition.Failed() > 0 {
-		err = fmt.Errorf("policy has failing enactments, aborting")
-		log.Error(err, "")
-		enactmentConditions.NotifyAborted(err)
-		return ctrl.Result{}, nil
-	}
-
 	if r.shouldIncrementUnavailableNodeCount(instance, previousConditions) {
 		err = r.incrementUnavailableNodeCount(instance)
 		if err != nil {
 			if apierrors.IsConflict(err) || errors.Is(err, node.MaxUnavailableLimitReachedError{}) {
 				enactmentConditions.NotifyPending()
 				log.Info(err.Error())
-				return ctrl.Result{RequeueAfter: nodeRunningUpdateRetryTime}, nil
+				return ctrl.Result{Requeue: true}, nil
 			}
 			return ctrl.Result{}, err
 		}
@@ -230,32 +214,11 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	if err != nil {
 		errmsg := fmt.Errorf("error reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
 			nodeName, nmstateOutput, err)
-		enactmentConditions.NotifyFailedToConfigure(errmsg)
+		enactmentConditions.NotifyRetryAfterFailedToConfigure(errmsg)
 		log.Error(errmsg, fmt.Sprintf("Rolling back network configuration, manual intervention needed: %s", nmstateOutput))
 
-		retries := enactmentInstance.Status.RetryCount
-
-		if retries >= MaximumReconcileRetries {
-			errmsg := fmt.Errorf("error max tries (%d) reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
-				MaximumReconcileRetries, nodeName, nmstateOutput, err)
-			enactmentConditions.NotifyFailedToConfigure(errmsg)
-			if r.Recorder != nil {
-				r.Recorder.Event(instance, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
-			}
-			return ctrl.Result{}, nil
-		}
-		log.Info("retrying reconciliation", "retries", retries)
-
-		err := incrementNNCERetryCount(r, instance, enactmentInstance)
-		if err != nil {
-			errmsg := fmt.Errorf("error incrementing NNCE retryCounter on node %s: %q",
-				nodeName, err)
-			if r.Recorder != nil {
-				r.Recorder.Event(instance, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
-			}
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{Requeue: true}, err
+		log.Info("Requeue into Reconcile loop.")
+		return ctrl.Result{Requeue: true}, nil
 	}
 	log.Info("nmstate", "output", nmstateOutput)
 
@@ -266,21 +229,21 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	return ctrl.Result{}, nil
 }
 
-func incrementNNCERetryCount(
-	r *NodeNetworkConfigurationPolicyReconciler,
-	instance *nmstatev1.NodeNetworkConfigurationPolicy,
-	enactment *nmstatev1beta1.NodeNetworkConfigurationEnactment) error {
-	enactmentKey := nmstateapi.EnactmentKey(nodeName, instance.Name)
-	log := r.Log.WithValues("incrementNNCERetryCount", enactmentKey)
-	log.Info(fmt.Sprintf("incrementing retryCount on %s", enactmentKey))
-	return enactmentstatus.Update(
-		r.APIClient,
-		enactmentKey,
-		func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
-			status.RetryCount = enactment.Status.RetryCount + 1
-		},
-	)
-}
+//func incrementNNCERetryCount(
+//	r *NodeNetworkConfigurationPolicyReconciler,
+//	instance *nmstatev1.NodeNetworkConfigurationPolicy,
+//	enactment *nmstatev1beta1.NodeNetworkConfigurationEnactment) error {
+//	enactmentKey := nmstateapi.EnactmentKey(nodeName, instance.Name)
+//	log := r.Log.WithValues("incrementNNCERetryCount", enactmentKey)
+//	log.Info(fmt.Sprintf("incrementing retryCount on %s", enactmentKey))
+//	return enactmentstatus.Update(
+//		r.APIClient,
+//		enactmentKey,
+//		func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
+//			status.RetryCount = enactment.Status.RetryCount + 1
+//		},
+//	)
+//}
 
 func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	allPolicies := handler.TypedMapFunc[*corev1.Node, reconcile.Request](
