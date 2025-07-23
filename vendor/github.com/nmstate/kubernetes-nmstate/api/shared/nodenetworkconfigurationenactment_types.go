@@ -75,11 +75,12 @@ var NodeNetworkConfigurationEnactmentConditionTypes = [...]ConditionType{
 }
 
 const (
-	NodeNetworkConfigurationEnactmentConditionFailedToConfigure          ConditionReason = "FailedToConfigure"
-	NodeNetworkConfigurationEnactmentConditionSuccessfullyConfigured     ConditionReason = "SuccessfullyConfigured"
-	NodeNetworkConfigurationEnactmentConditionMaxUnavailableLimitReached ConditionReason = "MaxUnavailableLimitReached"
-	NodeNetworkConfigurationEnactmentConditionConfigurationProgressing   ConditionReason = "ConfigurationProgressing"
-	NodeNetworkConfigurationEnactmentConditionConfigurationAborted       ConditionReason = "ConfigurationAborted"
+	NodeNetworkConfigurationEnactmentConditionFailedToConfigure           ConditionReason = "FailedToConfigure"
+	NodeNetworkConfigurationEnactmentConditionRetryAfterFailedToConfigure ConditionReason = "RetryAfterFailedToConfigure"
+	NodeNetworkConfigurationEnactmentConditionSuccessfullyConfigured      ConditionReason = "SuccessfullyConfigured"
+	NodeNetworkConfigurationEnactmentConditionMaxUnavailableLimitReached  ConditionReason = "MaxUnavailableLimitReached"
+	NodeNetworkConfigurationEnactmentConditionConfigurationProgressing    ConditionReason = "ConfigurationProgressing"
+	NodeNetworkConfigurationEnactmentConditionConfigurationAborted        ConditionReason = "ConfigurationAborted"
 )
 
 func EnactmentKey(node, policy string) types.NamespacedName {
