@@ -301,7 +301,7 @@ spec:
                 resources:
                   limits:
                     cpu: 500m
-                    memory: 128Mi
+                    memory: 1Gi
                   requests:
                     cpu: 60m
                     memory: 30Mi
@@ -361,6 +361,8 @@ spec:
   maintainers:
   - email: ellorent@redhat.com
     name: Enrique Llorente Pastora
+  - email: mko@redhat.com
+    name: Mateusz Kowalski
   - email: phoracek@redhat.com
     name: Petr Horacek
   maturity: alpha
