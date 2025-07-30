@@ -244,6 +244,7 @@ github.com/onsi/gomega/types
 github.com/openshift/api/config/v1
 github.com/openshift/api/console/v1
 github.com/openshift/api/operator/v1
+github.com/openshift/api/security/v1
 # github.com/openshift/cluster-network-operator v0.0.0-20250121144718-0dfccc148f81
 ## explicit; go 1.23
 github.com/openshift/cluster-network-operator/pkg/render
@@ -357,8 +358,8 @@ golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.23.0
-## explicit; go 1.18
+# golang.org/x/oauth2 v0.27.0
+## explicit; go 1.23.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.12.0

@@ -35,19 +35,29 @@ var _ = Describe("[nns] NNS OVN bridge mappings", func() {
 	)
 
 	BeforeEach(func() {
+		for _, node := range nodes {
+			Expect(nodeBridgeMappings(node)).NotTo(
+				ContainElement(state.PhysicalNetworks{Name: networkName, Bridge: bridgeName}))
+		}
+
 		By("provisioning some bridge mappings ...")
 		updateDesiredState(bridgeMappings(networkName, bridgeName))
 
 		By("Check policy is at available state")
 		policyconditions.WaitForAvailableTestPolicy()
+	})
 
-		DeferCleanup(func() {
-			By("resetting the bridge mappings ...")
-			updateDesiredState(cleanBridgeMappings(networkName))
+	AfterEach(func() {
+		By("resetting the bridge mappings ...")
+		updateDesiredState(cleanBridgeMappings(networkName, bridgeName))
 
-			By("Check policy is at available state")
-			policyconditions.WaitForAvailableTestPolicy()
-		})
+		By("Check policy is at available state")
+		policyconditions.WaitForAvailableTestPolicy()
+
+		for _, node := range nodes {
+			Expect(nodeBridgeMappings(node)).NotTo(
+				ContainElement(state.PhysicalNetworks{Name: networkName, Bridge: bridgeName}))
+		}
 	})
 
 	It("are listed", func() {
