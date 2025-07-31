@@ -72,6 +72,14 @@ func (ec *EnactmentConditions) NotifyFailedToConfigure(failedErr error) {
 	}
 }
 
+func (ec *EnactmentConditions) NotifyRetryAfterFailedToConfigure(failedErr error) {
+	ec.logger.Info("NotifyRetryAfterFailedToConfigure")
+	err := ec.updateEnactmentConditions(SetRetryAfterFailedToConfigure, failedErr.Error())
+	if err != nil {
+		ec.logger.Error(err, "Error notifying state RetryAfterFailedToConfigure")
+	}
+}
+
 func (ec *EnactmentConditions) NotifyAborted(failedErr error) {
 	ec.logger.Info("NotifyConfigurationAborted")
 	err := ec.updateEnactmentConditions(SetConfigurationAborted, failedErr.Error())
@@ -118,6 +126,10 @@ func (ec *EnactmentConditions) updateEnactmentConditions(
 
 func SetFailedToConfigure(conditions *nmstate.ConditionList, message string) {
 	SetFailed(conditions, nmstate.NodeNetworkConfigurationEnactmentConditionFailedToConfigure, message)
+}
+
+func SetRetryAfterFailedToConfigure(conditions *nmstate.ConditionList, message string) {
+	SetFailed(conditions, nmstate.NodeNetworkConfigurationEnactmentConditionRetryAfterFailedToConfigure, message)
 }
 
 func SetFailed(conditions *nmstate.ConditionList, reason nmstate.ConditionReason, message string) {
