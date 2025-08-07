@@ -41,9 +41,12 @@ $(yq4) --inplace eval '.metadata.annotations += {"features.operators.openshift.i
 # delete unneeded files
 rm -f ${BUNDLE_DIR}/manifests/nmstate.io_nodenetwork*.yaml
 
-# Add network policies to the bundle. They will be used as-is by the OLM in OCP 4.20 and later.
-cp ${MANIFESTS_DIR}/network-policy-default-deny-all.yaml ${BUNDLE_DIR}/manifests/network-policy-default-deny-all.yaml
-cp ${MANIFESTS_DIR}/network-policy-allow-egress-to-api-server.yaml ${BUNDLE_DIR}/manifests/network-policy-allow-egress-to-api-server.yaml
+# Network policy support did not make it into OCP 4.20. We must not add manifests to the bundle.
+# Doing so will break the validation pipeline. Once OLM gets the feature, uncomment the following lines.
+#
+# # Add network policies to the bundle. They will be used as-is by the OLM in OCP 4.20 and later.
+# cp ${MANIFESTS_DIR}/network-policy-default-deny-all.yaml ${BUNDLE_DIR}/manifests/network-policy-default-deny-all.yaml
+# cp ${MANIFESTS_DIR}/network-policy-allow-egress-to-api-server.yaml ${BUNDLE_DIR}/manifests/network-policy-allow-egress-to-api-server.yaml
 
 # save new bundle.Dockerfile with new paths
 sed 's#manifests\/$(CHANNEL)/##g' bundle.Dockerfile > ${BUNDLE_DIR}/bundle.Dockerfile
