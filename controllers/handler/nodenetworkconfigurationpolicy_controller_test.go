@@ -169,7 +169,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 		Entry("No node applying policy with empty enactment, should succeed incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
 				currentUnavailableNodeCount:      0,
-				expectedUnavailableNodeCount:     0,
+				expectedUnavailableNodeCount:     1,
 				previousEnactmentConditions:      func(*shared.ConditionList, string) {},
 				expectedReconcileResult:          ctrl.Result{Requeue: true},
 				shouldUpdateUnavailableNodeCount: true,
@@ -177,7 +177,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 		Entry("No node applying policy with progressing enactment, should succeed incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
 				currentUnavailableNodeCount:      0,
-				expectedUnavailableNodeCount:     0,
+				expectedUnavailableNodeCount:     1,
 				previousEnactmentConditions:      conditions.SetProgressing,
 				expectedReconcileResult:          ctrl.Result{Requeue: true},
 				shouldUpdateUnavailableNodeCount: false,
@@ -185,7 +185,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 		Entry("No node applying policy with Pending enactment, should succeed incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
 				currentUnavailableNodeCount:      0,
-				expectedUnavailableNodeCount:     0,
+				expectedUnavailableNodeCount:     1,
 				previousEnactmentConditions:      conditions.SetPending,
 				expectedReconcileResult:          ctrl.Result{Requeue: true},
 				shouldUpdateUnavailableNodeCount: true,
@@ -201,7 +201,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 		Entry("One node applying policy with Progressing enactment, should succeed incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
 				currentUnavailableNodeCount:      1,
-				expectedUnavailableNodeCount:     0,
+				expectedUnavailableNodeCount:     1,
 				previousEnactmentConditions:      conditions.SetProgressing,
 				expectedReconcileResult:          ctrl.Result{Requeue: true},
 				shouldUpdateUnavailableNodeCount: false,
