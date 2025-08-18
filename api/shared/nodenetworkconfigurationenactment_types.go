@@ -43,6 +43,9 @@ type NodeNetworkConfigurationEnactmentStatus struct {
 	Conditions ConditionList `json:"conditions,omitempty"`
 
 	Features []string `json:"features,omitempty"`
+
+	// +kubebuilder:default=0
+	RetryCount int `json:"retryCount"`
 }
 
 type NodeNetworkConfigurationEnactmentCapturedState struct {
@@ -75,12 +78,12 @@ var NodeNetworkConfigurationEnactmentConditionTypes = [...]ConditionType{
 }
 
 const (
-	NodeNetworkConfigurationEnactmentConditionFailedToConfigure           ConditionReason = "FailedToConfigure"
-	NodeNetworkConfigurationEnactmentConditionRetryAfterFailedToConfigure ConditionReason = "RetryAfterFailedToConfigure"
-	NodeNetworkConfigurationEnactmentConditionSuccessfullyConfigured      ConditionReason = "SuccessfullyConfigured"
-	NodeNetworkConfigurationEnactmentConditionMaxUnavailableLimitReached  ConditionReason = "MaxUnavailableLimitReached"
-	NodeNetworkConfigurationEnactmentConditionConfigurationProgressing    ConditionReason = "ConfigurationProgressing"
-	NodeNetworkConfigurationEnactmentConditionConfigurationAborted        ConditionReason = "ConfigurationAborted"
+	NodeNetworkConfigurationEnactmentConditionFailedToConfigure          ConditionReason = "FailedToConfigure"
+	NodeNetworkConfigurationEnactmentConditionRetrying                   ConditionReason = "Retrying"
+	NodeNetworkConfigurationEnactmentConditionSuccessfullyConfigured     ConditionReason = "SuccessfullyConfigured"
+	NodeNetworkConfigurationEnactmentConditionMaxUnavailableLimitReached ConditionReason = "MaxUnavailableLimitReached"
+	NodeNetworkConfigurationEnactmentConditionConfigurationProgressing   ConditionReason = "ConfigurationProgressing"
+	NodeNetworkConfigurationEnactmentConditionConfigurationAborted       ConditionReason = "ConfigurationAborted"
 )
 
 func EnactmentKey(node, policy string) types.NamespacedName {

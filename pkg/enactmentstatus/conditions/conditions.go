@@ -72,11 +72,11 @@ func (ec *EnactmentConditions) NotifyFailedToConfigure(failedErr error) {
 	}
 }
 
-func (ec *EnactmentConditions) NotifyRetryAfterFailedToConfigure(failedErr error) {
-	ec.logger.Info("NotifyRetryAfterFailedToConfigure")
-	err := ec.updateEnactmentConditions(SetRetryAfterFailedToConfigure, failedErr.Error())
+func (ec *EnactmentConditions) NotifyRetrying(failedErr error) {
+	ec.logger.Info("NotifyRetryAfterFailed")
+	err := ec.updateEnactmentConditions(SetRetryAfterFailed, failedErr.Error())
 	if err != nil {
-		ec.logger.Error(err, "Error notifying state RetryAfterFailedToConfigure")
+		ec.logger.Error(err, "Error notifying state Retrying")
 	}
 }
 
@@ -128,8 +128,41 @@ func SetFailedToConfigure(conditions *nmstate.ConditionList, message string) {
 	SetFailed(conditions, nmstate.NodeNetworkConfigurationEnactmentConditionFailedToConfigure, message)
 }
 
-func SetRetryAfterFailedToConfigure(conditions *nmstate.ConditionList, message string) {
-	SetFailed(conditions, nmstate.NodeNetworkConfigurationEnactmentConditionRetryAfterFailedToConfigure, message)
+func SetRetryAfterFailed(conditions *nmstate.ConditionList, message string) {
+	SetRetry(conditions, nmstate.NodeNetworkConfigurationEnactmentConditionRetrying, message)
+}
+
+func SetRetry(conditions *nmstate.ConditionList, reason nmstate.ConditionReason, message string) {
+	conditions.Set(
+		nmstate.NodeNetworkConfigurationEnactmentConditionFailing,
+		corev1.ConditionTrue,
+		reason,
+		message,
+	)
+	conditions.Set(
+		nmstate.NodeNetworkConfigurationEnactmentConditionProgressing,
+		corev1.ConditionTrue,
+		reason,
+		message,
+	)
+	conditions.Set(
+		nmstate.NodeNetworkConfigurationEnactmentConditionAvailable,
+		corev1.ConditionFalse,
+		reason,
+		"",
+	)
+	conditions.Set(
+		nmstate.NodeNetworkConfigurationEnactmentConditionPending,
+		corev1.ConditionFalse,
+		reason,
+		"",
+	)
+	conditions.Set(
+		nmstate.NodeNetworkConfigurationEnactmentConditionAborted,
+		corev1.ConditionFalse,
+		nmstate.NodeNetworkConfigurationEnactmentConditionSuccessfullyConfigured,
+		"",
+	)
 }
 
 func SetFailed(conditions *nmstate.ConditionList, reason nmstate.ConditionReason, message string) {

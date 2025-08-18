@@ -120,6 +120,11 @@ spec:
                   condition status belongs to the same policy version
                 format: int64
                 type: integer
+              retryCount:
+                default: 0
+                type: integer
+            required:
+            - retryCount
             type: object
         type: object
         x-kubernetes-preserve-unknown-fields: true
