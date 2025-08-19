@@ -177,7 +177,7 @@ check-bundle: bundle
 	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
 
 check-ocp-bundle: ocp-update-bundle-manifests
-	git diff --exit-code -I'^    createdAt: ' -s bundle || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
+	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
 
 generate: gen-k8s gen-crds gen-rbac
 
