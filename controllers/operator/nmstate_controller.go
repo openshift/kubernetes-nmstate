@@ -200,7 +200,7 @@ func (r *NMStateReconciler) applyNetworkPolicies(instance *nmstatev1.NMState) er
 func (r *NMStateReconciler) applyRBAC(instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 
@@ -320,7 +320,7 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	probeConfig := instance.Spec.ProbeConfiguration
 
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
@@ -511,8 +511,11 @@ func (r *NMStateReconciler) apply(ctx context.Context, newObj *unstructured.Unst
 		return nil
 	}
 	newObj.SetResourceVersion(oldObj.GetResourceVersion())
-	if err := r.Client.Patch(ctx, newObj, client.MergeFrom(oldObj)); err != nil {
-		return fmt.Errorf("failed patching %q \"%s:%s: %w", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName(), err)
+	if err := r.Client.Patch(ctx, newObj, client.StrategicMergeFrom(oldObj)); err != nil {
+		if err := r.Client.Patch(ctx, newObj, client.MergeFrom(oldObj)); err != nil {
+			return fmt.Errorf("failed patching %q \"%s:%s: %w", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName(), err)
+		}
+		r.Log.Info("failed strategic patch but succeeded fallback %q \"%s:%s", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName())
 	}
 	return nil
 }
