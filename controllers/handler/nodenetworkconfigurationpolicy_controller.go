@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/nmstate/kubernetes-nmstate/pkg/enactment"
 	"github.com/pkg/errors"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
@@ -578,44 +577,21 @@ func (r *NodeNetworkConfigurationPolicyReconciler) shouldAbortReconcile(
 	instance *nmstatev1.NodeNetworkConfigurationPolicy,
 ) (bool, error) {
 	logger := r.Log.WithName("shouldAbortReconcile")
-	_, enactmentCountByCondition, err := enactment.CountByPolicy(r.APIClient, instance)
-	if err != nil {
-		logger.Error(err, "Error getting enactment counts")
-		return false, err
-	}
 	maxUnavailable, err := node.MaxUnavailableNodeCount(r.APIClient, instance)
 	if err != nil {
 		logger.Info("Error getting max unavailable count")
 		return false, err
 	}
-	if !(enactmentCountByCondition.NotProgressing() < maxUnavailable) {
-		logger.Info(fmt.Sprintf("policy %q has reached the maximum unavailable failing enactments, aborting", instance.Name))
-		return true, nil
+	filter := enactmentconditions.LogicalConditionCountFilter{
+		nmstateapi.NodeNetworkConfigurationEnactmentConditionFailing:  corev1.ConditionTrue,
+		nmstateapi.NodeNetworkConfigurationPolicyConditionProgressing: corev1.ConditionFalse,
 	}
-	return false, nil
-}
 
-func allPolicies(client client.Client, log logr.Logger) handler.TypedMapFunc[*corev1.Node, reconcile.Request] {
-	return handler.TypedMapFunc[*corev1.Node, reconcile.Request](
-		func(context.Context, *corev1.Node) []reconcile.Request {
-			logger := log.WithName("allPolicies")
-			allPoliciesAsRequest := []reconcile.Request{}
-			policyList := nmstatev1.NodeNetworkConfigurationPolicyList{}
-			err := client.List(context.TODO(), &policyList)
-			if err != nil {
-				logger.Error(err, "failed listing all NodeNetworkConfigurationPolicies to re-reconcile them after node created or updated")
-				return []reconcile.Request{}
-			}
-			sort.Slice(policyList.Items, func(i, j int) bool {
-				return policyList.Items[i].Name < policyList.Items[j].Name
-			})
-			for policyIndex := range policyList.Items {
-				policy := policyList.Items[policyIndex]
-				allPoliciesAsRequest = append(allPoliciesAsRequest, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Name: policy.Name,
-					}})
-			}
-			return allPoliciesAsRequest
-		})
+	failedConditionCount, err := enactmentconditions.CountConditionsLogicalAnd(r.APIClient, *instance, filter)
+	if err != nil {
+		logger.Info("Error getting unavailable enactment count")
+		return false, err
+	}
+
+	return failedConditionCount >= maxUnavailable, nil
 }
