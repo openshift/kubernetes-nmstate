@@ -63,8 +63,8 @@ import (
 
 const (
 	ReconcileFailed    = "ReconcileFailed"
-	MaximumTimeBackoff = 10
-	RetriesUntilFail   = 3
+	MaximumTimeBackoff = 30
+	RetriesUntilFail   = 5
 )
 
 var (
