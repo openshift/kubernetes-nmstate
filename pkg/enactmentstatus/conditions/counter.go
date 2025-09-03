@@ -146,8 +146,7 @@ func CountConditionsLogicalAnd(r client.Client, policy nmstatev1.NodeNetworkConf
 		increase := true
 		for conditionType := range filter {
 			condition := enactment.Status.Conditions.Find(conditionType)
-
-			if condition.Status != filter[conditionType] {
+			if condition != nil && condition.Status != filter[conditionType] {
 				increase = false
 			}
 		}
