@@ -151,7 +151,7 @@ func CountConditionsLogicalAnd(r client.Client, policy nmstatev1.NodeNetworkConf
 				increase = false
 			}
 		}
-		if increase {
+		if increase && enactment.Status.PolicyGeneration == policy.Generation {
 			conditionCount++
 		}
 	}

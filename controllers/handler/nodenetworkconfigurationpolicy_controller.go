@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -62,8 +63,8 @@ import (
 
 const (
 	ReconcileFailed    = "ReconcileFailed"
-	MaximumTimeBackoff = 30
-	RetriesUntilFail   = 5
+	MaximumTimeBackoff = 10
+	RetriesUntilFail   = 3
 )
 
 var (
@@ -188,6 +189,10 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		return ctrl.Result{}, err
 	}
 
+	if enactmentstatus.IsFailedOrAborted(previousConditions) {
+		return ctrl.Result{}, err
+	}
+
 	if r.shouldIncrementUnavailableNodeCount(previousConditions) {
 		err = r.incrementUnavailableNodeCount(instance)
 		if err != nil {
@@ -231,7 +236,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 			return ctrl.Result{}, err
 		}
 
-		if enactmentInstance.Status.RetryCount >= RetriesUntilFail {
+		if enactmentInstance.Status.RetryCount[strconv.FormatInt(instance.Generation, 10)] >= RetriesUntilFail {
 			enactmentConditions.NotifyFailedToConfigure(errmsg)
 			if r.Recorder != nil {
 				r.Recorder.Event(instance,
@@ -246,7 +251,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		enactmentConditions.NotifyRetrying(
 			fmt.Errorf("failed to reconcile NodeNetworkConfigurationPolicy on node %s. Retrying %d/%d",
 				nodeName,
-				enactmentInstance.Status.RetryCount+1,
+				enactmentInstance.Status.RetryCount[strconv.FormatInt(instance.Generation, 10)]+1,
 				RetriesUntilFail),
 		)
 		return ctrl.Result{Requeue: true}, nil
@@ -266,11 +271,17 @@ func (r *NodeNetworkConfigurationPolicyReconciler) incrementNNCERetryCount(
 	enactmentKey := nmstateapi.EnactmentKey(nodeName, instance.Name)
 	log := r.Log.WithValues("incrementNNCERetryCount", enactmentKey)
 	log.Info(fmt.Sprintf("incrementing retryCount on %s", enactmentKey))
+	if enactment.Status.RetryCount == nil {
+		enactment.Status.RetryCount = map[string]int{}
+	}
+	count := enactment.Status.RetryCount[strconv.FormatInt(instance.Generation, 10)]
+
+	enactment.Status.RetryCount[strconv.FormatInt(instance.Generation, 10)] = count + 1
 	return enactmentstatus.Update(
 		r.APIClient,
 		enactmentKey,
 		func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
-			status.RetryCount = enactment.Status.RetryCount + 1
+			status.RetryCount = enactment.Status.RetryCount
 		},
 	)
 }
@@ -502,11 +513,15 @@ func (r *NodeNetworkConfigurationPolicyReconciler) incrementUnavailableNodeCount
 				fmt.Sprintf("failed calculating limit of max unavailable nodes, defaulting to %d, err: %s", maxUnavailable, err.Error()),
 			)
 		}
-		if policy.Status.UnavailableNodeCount >= maxUnavailable {
+
+		if policy.Status.UnavailableNodeCount == nil {
+			policy.Status.UnavailableNodeCount = map[string]int{}
+		}
+		if policy.Status.UnavailableNodeCount[strconv.FormatInt(policy.Generation, 10)] >= maxUnavailable {
 			return node.MaxUnavailableLimitReachedError{}
 		}
 		policy.Status.LastUnavailableNodeCountUpdate = &metav1.Time{Time: time.Now()}
-		policy.Status.UnavailableNodeCount += 1
+		policy.Status.UnavailableNodeCount[strconv.FormatInt(policy.Generation, 10)] += 1
 		return r.Client.Status().Update(context.TODO(), policy)
 	})
 }
@@ -534,11 +549,14 @@ func tryDecrementingUnavailableNodeCount(
 		if err != nil {
 			return err
 		}
-		if instance.Status.UnavailableNodeCount <= 0 {
+		if instance.Status.UnavailableNodeCount == nil {
+			instance.Status.UnavailableNodeCount = map[string]int{}
+		}
+		if instance.Status.UnavailableNodeCount[strconv.FormatInt(instance.Generation, 10)] <= 0 {
 			return fmt.Errorf("no unavailable nodes")
 		}
 		instance.Status.LastUnavailableNodeCountUpdate = &metav1.Time{Time: time.Now()}
-		instance.Status.UnavailableNodeCount -= 1
+		instance.Status.UnavailableNodeCount[strconv.FormatInt(instance.Generation, 10)] -= 1
 		return statusWriterClient.Status().Update(context.TODO(), instance)
 	})
 	return err
