@@ -31,11 +31,6 @@ KUBE_RBAC_PROXY_IMAGE_REPO ?= openshift
 KUBE_RBAC_PROXY_FULL_NAME ?= $(KUBE_RBAC_PROXY_IMAGE_REPO)/$(KUBE_RBAC_PROXY_NAME):$(KUBE_RBAC_PROXY_TAG)
 KUBE_RBAC_PROXY_IMAGE ?= $(KUBE_RBAC_PROXY_IMAGE_REGISTRY)/$(KUBE_RBAC_PROXY_FULL_NAME)
 
-PLUGIN_IMAGE_NAME ?= nmstate-console-plugin
-PLUGIN_IMAGE_TAG ?= latest
-PLUGIN_IMAGE_FULL_NAME ?= $(IMAGE_REPO)/$(PLUGIN_IMAGE_NAME):$(PLUGIN_IMAGE_TAG)
-PLUGIN_IMAGE ?= $(IMAGE_REGISTRY)/$(PLUGIN_IMAGE_FULL_NAME)
-
 export HANDLER_NAMESPACE ?= nmstate
 export OPERATOR_NAMESPACE ?= $(HANDLER_NAMESPACE)
 export MONITORING_NAMESPACE ?= monitoring
@@ -53,7 +48,7 @@ endif
 
 WHAT ?= ./pkg/... ./controllers/...
 
-LINTER_IMAGE_TAG ?= v0.0.3
+LINTER_IMAGE_TAG ?= v0.0.10
 
 unit_test_args ?=  -r -keep-going --randomize-all --randomize-suites --race --trace $(UNIT_TEST_ARGS)
 
@@ -63,7 +58,7 @@ export KUBEVIRT_NUM_SECONDARY_NICS ?= 2
 
 export E2E_TEST_TIMEOUT ?= 80m
 
-e2e_test_args = --vv -timeout=$(E2E_TEST_TIMEOUT) --slow-spec-threshold=60s $(E2E_TEST_ARGS)
+e2e_test_args = -vv --show-node-events -timeout=$(E2E_TEST_TIMEOUT) $(E2E_TEST_ARGS)
 
 ifeq ($(findstring k8s,$(KUBEVIRT_PROVIDER)),k8s)
 export PRIMARY_NIC ?= eth0
@@ -176,13 +171,10 @@ check-manifests: generate
 check-bundle: bundle
 	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
 
-check-ocp-bundle: ocp-update-bundle-manifests
-	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
-
 generate: gen-k8s gen-crds gen-rbac
 
 manifests:
-	GOFLAGS=-mod=mod go run hack/render-manifests.go -handler-prefix=$(HANDLER_PREFIX) -handler-namespace=$(HANDLER_NAMESPACE) -operator-namespace=$(OPERATOR_NAMESPACE) -handler-image=$(HANDLER_IMAGE) -operator-image=$(OPERATOR_IMAGE) -handler-pull-policy=$(HANDLER_PULL_POLICY) -monitoring-namespace=$(MONITORING_NAMESPACE) -kube-rbac-proxy-image=$(KUBE_RBAC_PROXY_IMAGE) -operator-pull-policy=$(OPERATOR_PULL_POLICY) -plugin-image=$(PLUGIN_IMAGE) -input-dir=deploy/ -output-dir=$(MANIFESTS_DIR)
+	GOFLAGS=-mod=mod go run hack/render-manifests.go -handler-prefix=$(HANDLER_PREFIX) -handler-namespace=$(HANDLER_NAMESPACE) -operator-namespace=$(OPERATOR_NAMESPACE) -handler-image=$(HANDLER_IMAGE) -operator-image=$(OPERATOR_IMAGE) -handler-pull-policy=$(HANDLER_PULL_POLICY) -monitoring-namespace=$(MONITORING_NAMESPACE) -kube-rbac-proxy-image=$(KUBE_RBAC_PROXY_IMAGE) -operator-pull-policy=$(OPERATOR_PULL_POLICY) -input-dir=deploy/ -output-dir=$(MANIFESTS_DIR)
 
 handler: SKIP_PUSH=true
 handler: push-handler
@@ -215,17 +207,6 @@ test-e2e-upgrade: manifests
 	KUBECONFIG=$(KUBECONFIG) OPERATOR_NAMESPACE=$(OPERATOR_NAMESPACE) MONITORING_NAMESPACE=$(MONITORING_NAMESPACE) $(GINKGO) $(e2e_test_args) ./test/e2e/upgrade ...
 
 test-e2e: test-e2e-operator test-e2e-handler
-
-test-e2e-ocp: test-e2e-handler-ocp # deprecated. Use test-e2e-handler-ocp instead
-
-test-e2e-handler-ocp:
-	./hack/ocp-e2e-tests-handler.sh
-
-test-e2e-operator-ocp:
-	./hack/ocp-e2e-tests-operator.sh
-
-test-e2e-azure-ocp:
-	./hack/ocp-e2e-tests-azure.sh
 
 cluster-up:
 	./cluster/up.sh
@@ -263,20 +244,8 @@ vendor:
 # Generate bundle manifests and metadata, then validate generated files.
 bundle: operator-sdk gen-crds manifests
 	cp -r $(MANIFEST_BASES_DIR) $(MANIFESTS_DIR)/bases
-	$(OPERATOR_SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS) --deploy-dir $(MANIFESTS_DIR) --crds-dir deploy/crds --output-dir $(BUNDLE_DIR)
+	$(OPERATOR_SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS) --deploy-dir $(MANIFESTS_DIR) --crds-dir deploy/crds
 	$(OPERATOR_SDK) bundle validate $(BUNDLE_DIR)
-
-# Update the OCP bundle manifests
-ocp-update-bundle-manifests: generate manifests
-	./hack/ocp-update-bundle-manifests.sh
-
-# Build and deploy the OCP bundle
-ocp-build-and-deploy-bundle: generate manifests
-	./hack/ocp-build-and-deploy-bundle.sh
-
-# Uninstall the bundle from "make ocp-build-and-deploy-bundle"
-ocp-uninstall-bundle:
-	./hack/ocp-uninstall-bundle.sh
 
 # Build the bundle image.
 bundle-build:
@@ -320,5 +289,4 @@ olm-push: bundle-push index-push
 	generate-manifests \
 	tools \
 	bundle \
-	bundle-build \
-	manifests
+	bundle-build
