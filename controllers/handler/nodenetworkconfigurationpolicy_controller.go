@@ -25,9 +25,11 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/nmstate/kubernetes-nmstate/pkg/enactment"
 	"github.com/pkg/errors"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/client-go/util/workqueue"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,7 +52,6 @@ import (
 	nmstatev1beta1 "github.com/nmstate/kubernetes-nmstate/api/v1beta1"
 	"github.com/nmstate/kubernetes-nmstate/pkg/bridge"
 	nmstate "github.com/nmstate/kubernetes-nmstate/pkg/client"
-	"github.com/nmstate/kubernetes-nmstate/pkg/enactment"
 	"github.com/nmstate/kubernetes-nmstate/pkg/enactmentstatus"
 	enactmentconditions "github.com/nmstate/kubernetes-nmstate/pkg/enactmentstatus/conditions"
 	"github.com/nmstate/kubernetes-nmstate/pkg/environment"
@@ -58,17 +59,17 @@ import (
 	"github.com/nmstate/kubernetes-nmstate/pkg/nmstatectl"
 	"github.com/nmstate/kubernetes-nmstate/pkg/node"
 	"github.com/nmstate/kubernetes-nmstate/pkg/policyconditions"
-	"github.com/nmstate/kubernetes-nmstate/pkg/probe"
 	"github.com/nmstate/kubernetes-nmstate/pkg/selectors"
 )
 
 const (
-	ReconcileFailed = "ReconcileFailed"
+	ReconcileFailed    = "ReconcileFailed"
+	MaximumTimeBackoff = 30
+	RetriesUntilFail   = 5
 )
 
 var (
 	nodeName                                        string
-	nodeRunningUpdateRetryTime                      = 5 * time.Second
 	onCreateOrUpdateWithDifferentGenerationOrDelete = predicate.TypedFuncs[*nmstatev1.NodeNetworkConfigurationPolicy]{
 		CreateFunc: func(createEvent event.TypedCreateEvent[*nmstatev1.NodeNetworkConfigurationPolicy]) bool {
 			return true
@@ -148,10 +149,6 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		return ctrl.Result{}, err
 	}
 
-	if !policyconditions.IsProgressing(&instance.Status.Conditions) {
-		policyconditions.Reset(r.Client, request.NamespacedName)
-	}
-
 	// Policy conditions will be updated at the end so updating it
 	// does not impact at applying state, it will increase just
 	// reconcile time.
@@ -171,12 +168,11 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	}
 
 	enactmentInstance, err := r.initializeEnactment(instance)
-	previousConditions := &enactmentInstance.Status.Conditions
 	if err != nil {
 		log.Error(err, "Error initializing enactment")
 		return ctrl.Result{}, err
 	}
-
+	previousConditions := &enactmentInstance.Status.Conditions
 	enactmentConditions := enactmentconditions.New(r.APIClient, nmstateapi.EnactmentKey(nodeName, instance.Name))
 
 	err = r.fillInEnactmentStatus(instance, enactmentInstance, enactmentConditions)
@@ -194,30 +190,32 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		return ctrl.Result{}, err
 	}
 
-	_, enactmentCountByCondition, err := enactment.CountByPolicy(r.APIClient, instance)
-	if err != nil {
-		log.Error(err, "Error getting enactment counts")
-		return ctrl.Result{}, err
-	}
-	if enactmentCountByCondition.Failed() > 0 {
-		err = fmt.Errorf("policy has failing enactments, aborting")
-		log.Error(err, "")
-		enactmentConditions.NotifyAborted(err)
-		return ctrl.Result{}, nil
-	}
-
-	if r.shouldIncrementUnavailableNodeCount(instance, previousConditions) {
+	if r.shouldIncrementUnavailableNodeCount(previousConditions) {
 		err = r.incrementUnavailableNodeCount(instance)
 		if err != nil {
 			if apierrors.IsConflict(err) || errors.Is(err, node.MaxUnavailableLimitReachedError{}) {
 				enactmentConditions.NotifyPending()
 				log.Info(err.Error())
-				return ctrl.Result{RequeueAfter: nodeRunningUpdateRetryTime}, nil
+				shouldAbortEnactment, err := r.shouldAbortReconcile(instance)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				if shouldAbortEnactment {
+					if r.Recorder != nil {
+						r.Recorder.Event(
+							instance,
+							corev1.EventTypeWarning,
+							ReconcileFailed,
+							fmt.Errorf("reconciliation of enactment %q has aborted", enactmentInstance.Name).Error())
+					}
+					enactmentConditions.NotifyAborted(fmt.Errorf("reconciliation of enactment %q has aborted", enactmentInstance.Name))
+					return ctrl.Result{}, nil
+				}
+				return ctrl.Result{Requeue: true}, nil
 			}
 			return ctrl.Result{}, err
 		}
 	}
-	defer r.decrementUnavailableNodeCount(instance)
 
 	enactmentConditions.NotifyProgressing()
 	if policyconditions.IsUnknown(&instance.Status.Conditions) {
@@ -228,20 +226,55 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	if err != nil {
 		errmsg := fmt.Errorf("error reconciling NodeNetworkConfigurationPolicy on node %s at desired state apply: %q,\n %v",
 			nodeName, nmstateOutput, err)
-		enactmentConditions.NotifyFailedToConfigure(errmsg)
 		log.Error(errmsg, fmt.Sprintf("Rolling back network configuration, manual intervention needed: %s", nmstateOutput))
-		if r.Recorder != nil {
-			r.Recorder.Event(instance, corev1.EventTypeWarning, ReconcileFailed, errmsg.Error())
+		err := r.incrementNNCERetryCount(instance, enactmentInstance)
+		if err != nil {
+			log.Info("Error incrementing NNCERetry count")
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
+
+		if enactmentInstance.Status.RetryCount >= RetriesUntilFail {
+			enactmentConditions.NotifyFailedToConfigure(errmsg)
+			if r.Recorder != nil {
+				r.Recorder.Event(instance,
+					corev1.EventTypeWarning,
+					ReconcileFailed,
+					fmt.Errorf(
+						"reconciliation of enactment %q has failed after %d retries",
+						enactmentInstance.Name, RetriesUntilFail).Error())
+			}
+			return ctrl.Result{}, nil
+		}
+		enactmentConditions.NotifyRetrying(
+			fmt.Errorf("failed to reconcile NodeNetworkConfigurationPolicy on node %s. Retrying %d/%d",
+				nodeName,
+				enactmentInstance.Status.RetryCount+1,
+				RetriesUntilFail),
+		)
+		return ctrl.Result{Requeue: true}, nil
 	}
 	log.Info("nmstate", "output", nmstateOutput)
 
 	enactmentConditions.NotifySuccess()
-
+	defer r.decrementUnavailableNodeCount(instance)
 	r.forceNNSRefresh(nodeName)
 
 	return ctrl.Result{}, nil
+}
+
+func (r *NodeNetworkConfigurationPolicyReconciler) incrementNNCERetryCount(
+	instance *nmstatev1.NodeNetworkConfigurationPolicy,
+	enactment *nmstatev1beta1.NodeNetworkConfigurationEnactment) error {
+	enactmentKey := nmstateapi.EnactmentKey(nodeName, instance.Name)
+	log := r.Log.WithValues("incrementNNCERetryCount", enactmentKey)
+	log.Info(fmt.Sprintf("incrementing retryCount on %s", enactmentKey))
+	return enactmentstatus.Update(
+		r.APIClient,
+		enactmentKey,
+		func(status *nmstateapi.NodeNetworkConfigurationEnactmentStatus) {
+			status.RetryCount = enactment.Status.RetryCount + 1
+		},
+	)
 }
 
 func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -250,7 +283,13 @@ func (r *NodeNetworkConfigurationPolicyReconciler) SetupWithManager(mgr ctrl.Man
 	// Reconcile NNCP if they are created/updated/deleted or
 	// Node is updated (for example labels are changed), node creation event
 	// is not needed since all NNCPs are going to be Reconcile at node startup.
-	c, err := controller.New("NodeNetworkConfigurationPolicy", mgr, controller.Options{Reconciler: r})
+	c, err := controller.New(
+		"NodeNetworkConfigurationPolicy",
+		mgr,
+		controller.Options{
+			Reconciler:  r,
+			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](time.Second, time.Second*MaximumTimeBackoff),
+		})
 	if err != nil {
 		return errors.Wrap(err, "failed to create NodeNetworkConfigurationPolicy controller")
 	}
@@ -426,12 +465,12 @@ func (r *NodeNetworkConfigurationPolicyReconciler) deleteEnactmentForPolicy(poli
 }
 
 func (r *NodeNetworkConfigurationPolicyReconciler) shouldIncrementUnavailableNodeCount(
-	policy *nmstatev1.NodeNetworkConfigurationPolicy,
 	conditions *nmstateapi.ConditionList,
 ) bool {
-	return !enactmentstatus.IsProgressing(conditions) &&
-		(policy.Status.LastUnavailableNodeCountUpdate == nil ||
-			time.Since(policy.Status.LastUnavailableNodeCountUpdate.Time) < (nmstate.DesiredStateConfigurationTimeout+probe.ProbesTotalTimeout))
+	return !enactmentstatus.IsRetrying(conditions) &&
+		conditions != &nmstateapi.ConditionList{}
+	// (policy.Status.LastUnavailableNodeCountUpdate == nil ||
+	//	time.Since(policy.Status.LastUnavailableNodeCountUpdate.Time) < (nmstate.DesiredStateConfigurationTimeout+probe.ProbesTotalTimeout))
 }
 
 func (r *NodeNetworkConfigurationPolicyReconciler) incrementUnavailableNodeCount(policy *nmstatev1.NodeNetworkConfigurationPolicy) error {
@@ -516,6 +555,27 @@ func (r *NodeNetworkConfigurationPolicyReconciler) readNNS(name string) (*nmstat
 		return nil, err
 	}
 	return nns, nil
+}
+
+func (r *NodeNetworkConfigurationPolicyReconciler) shouldAbortReconcile(
+	instance *nmstatev1.NodeNetworkConfigurationPolicy,
+) (bool, error) {
+	logger := r.Log.WithName("shouldAbortReconcile")
+	_, enactmentCountByCondition, err := enactment.CountByPolicy(r.APIClient, instance)
+	if err != nil {
+		logger.Error(err, "Error getting enactment counts")
+		return false, err
+	}
+	maxUnavailable, err := node.MaxUnavailableNodeCount(r.APIClient, instance)
+	if err != nil {
+		logger.Info("Error getting max unavailable count")
+		return false, err
+	}
+	if !(enactmentCountByCondition.NotProgressing() < maxUnavailable) {
+		logger.Info(fmt.Sprintf("policy %q has reached the maximum unavailable failing enactments, aborting", instance.Name))
+		return true, nil
+	}
+	return false, nil
 }
 
 func allPolicies(client client.Client, log logr.Logger) handler.TypedMapFunc[*corev1.Node, reconcile.Request] {
