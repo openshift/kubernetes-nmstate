@@ -44,7 +44,7 @@ type NodeNetworkConfigurationEnactmentStatus struct {
 
 	Features []string `json:"features,omitempty"`
 
-	RetryCount map[string]int `json:"retryCount"`
+	RetryCount map[string]int `json:"retryCount,omitempty" optional:"true"`
 }
 
 type NodeNetworkConfigurationEnactmentCapturedState struct {
