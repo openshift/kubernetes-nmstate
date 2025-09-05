@@ -194,7 +194,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	}
 
 	if r.shouldIncrementUnavailableNodeCount(previousConditions) {
-		err = r.incrementUnavailableNodeCount(instance)
+		err = r.incrementUnavailableNodeCount(instance, enactmentInstance)
 		if err != nil {
 			if apierrors.IsConflict(err) || errors.Is(err, node.MaxUnavailableLimitReachedError{}) {
 				enactmentConditions.NotifyPending()
@@ -236,7 +236,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 			return ctrl.Result{}, err
 		}
 
-		if enactmentInstance.Status.RetryCount[strconv.FormatInt(instance.Generation, 10)] >= RetriesUntilFail {
+		if enactmentInstance.Status.RetryCount[strconv.FormatInt(enactmentInstance.Generation, 10)] >= RetriesUntilFail {
 			enactmentConditions.NotifyFailedToConfigure(errmsg)
 			if r.Recorder != nil {
 				r.Recorder.Event(instance,
@@ -251,7 +251,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 		enactmentConditions.NotifyRetrying(
 			fmt.Errorf("failed to reconcile NodeNetworkConfigurationPolicy on node %s. Retrying %d/%d",
 				nodeName,
-				enactmentInstance.Status.RetryCount[strconv.FormatInt(instance.Generation, 10)]+1,
+				enactmentInstance.Status.RetryCount[strconv.FormatInt(enactmentInstance.Generation, 10)]+1,
 				RetriesUntilFail),
 		)
 		return ctrl.Result{Requeue: true}, nil
@@ -259,7 +259,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	log.Info("nmstate", "output", nmstateOutput)
 
 	enactmentConditions.NotifySuccess()
-	defer r.decrementUnavailableNodeCount(instance)
+	r.decrementUnavailableNodeCount(instance, enactmentInstance)
 	r.forceNNSRefresh(nodeName)
 
 	return ctrl.Result{}, nil
@@ -500,7 +500,9 @@ func (r *NodeNetworkConfigurationPolicyReconciler) shouldIncrementUnavailableNod
 	//	time.Since(policy.Status.LastUnavailableNodeCountUpdate.Time) < (nmstate.DesiredStateConfigurationTimeout+probe.ProbesTotalTimeout))
 }
 
-func (r *NodeNetworkConfigurationPolicyReconciler) incrementUnavailableNodeCount(policy *nmstatev1.NodeNetworkConfigurationPolicy) error {
+func (r *NodeNetworkConfigurationPolicyReconciler) incrementUnavailableNodeCount(
+	policy *nmstatev1.NodeNetworkConfigurationPolicy,
+	enactmentInstance *nmstatev1beta1.NodeNetworkConfigurationEnactment) error {
 	policyKey := types.NamespacedName{Name: policy.GetName(), Namespace: policy.GetNamespace()}
 	return retry.OnError(retry.DefaultRetry, func(error) bool { return true }, func() error {
 		err := r.Client.Get(context.TODO(), policyKey, policy)
@@ -521,17 +523,19 @@ func (r *NodeNetworkConfigurationPolicyReconciler) incrementUnavailableNodeCount
 			return node.MaxUnavailableLimitReachedError{}
 		}
 		policy.Status.LastUnavailableNodeCountUpdate = &metav1.Time{Time: time.Now()}
-		policy.Status.UnavailableNodeCount[strconv.FormatInt(policy.Generation, 10)] += 1
+		policy.Status.UnavailableNodeCount[strconv.FormatInt(enactmentInstance.Generation, 10)] += 1
 		return r.Client.Status().Update(context.TODO(), policy)
 	})
 }
 
-func (r *NodeNetworkConfigurationPolicyReconciler) decrementUnavailableNodeCount(policy *nmstatev1.NodeNetworkConfigurationPolicy) {
+func (r *NodeNetworkConfigurationPolicyReconciler) decrementUnavailableNodeCount(
+	policy *nmstatev1.NodeNetworkConfigurationPolicy,
+	enactmentInstance *nmstatev1beta1.NodeNetworkConfigurationEnactment) {
 	policyKey := types.NamespacedName{Name: policy.GetName(), Namespace: policy.GetNamespace()}
-	err := tryDecrementingUnavailableNodeCount(r.Client, r.Client, policyKey)
+	err := tryDecrementingUnavailableNodeCount(r.Client, r.Client, policyKey, enactmentInstance)
 	if err != nil {
 		r.Log.Error(err, "error decrementing unavailableNodeCount with cached client, trying again with non-cached client.")
-		err = tryDecrementingUnavailableNodeCount(r.Client, r.APIClient, policyKey)
+		err = tryDecrementingUnavailableNodeCount(r.Client, r.APIClient, policyKey, enactmentInstance)
 		if err != nil {
 			r.Log.Error(err, "error decrementing unavailableNodeCount with non-cached client")
 		}
@@ -542,7 +546,7 @@ func tryDecrementingUnavailableNodeCount(
 	statusWriterClient client.StatusClient,
 	readerClient client.Reader,
 	policyKey types.NamespacedName,
-) error {
+	enactmentInstance *nmstatev1beta1.NodeNetworkConfigurationEnactment) error {
 	instance := &nmstatev1.NodeNetworkConfigurationPolicy{}
 	err := retry.OnError(retry.DefaultRetry, func(error) bool { return true }, func() error {
 		err := readerClient.Get(context.TODO(), policyKey, instance)
@@ -552,11 +556,11 @@ func tryDecrementingUnavailableNodeCount(
 		if instance.Status.UnavailableNodeCount == nil {
 			instance.Status.UnavailableNodeCount = map[string]int{}
 		}
-		if instance.Status.UnavailableNodeCount[strconv.FormatInt(instance.Generation, 10)] <= 0 {
+		if instance.Status.UnavailableNodeCount[strconv.FormatInt(enactmentInstance.Generation, 10)] <= 0 {
 			return fmt.Errorf("no unavailable nodes")
 		}
 		instance.Status.LastUnavailableNodeCountUpdate = &metav1.Time{Time: time.Now()}
-		instance.Status.UnavailableNodeCount[strconv.FormatInt(instance.Generation, 10)] -= 1
+		instance.Status.UnavailableNodeCount[strconv.FormatInt(enactmentInstance.Generation, 10)] -= 1
 		return statusWriterClient.Status().Update(context.TODO(), instance)
 	})
 	return err
@@ -605,7 +609,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) shouldAbortReconcile(
 		nmstateapi.NodeNetworkConfigurationPolicyConditionProgressing: corev1.ConditionFalse,
 	}
 
-	failedConditionCount, err := enactmentconditions.CountConditionsLogicalAnd(r.APIClient, *instance, filter)
+	failedConditionCount, err := enactmentconditions.CountConditionsLogicalAnd(r.APIClient, instance, filter)
 	if err != nil {
 		logger.Info("Error getting unavailable enactment count")
 		return false, err
