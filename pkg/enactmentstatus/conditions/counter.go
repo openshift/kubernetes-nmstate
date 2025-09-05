@@ -131,14 +131,16 @@ func (c CountByConditionStatus) String() string {
 
 type LogicalConditionCountFilter map[nmstate.ConditionType]corev1.ConditionStatus
 
-func CountConditionsLogicalAnd(r client.Client, policy nmstatev1.NodeNetworkConfigurationPolicy, filter LogicalConditionCountFilter) (int, error) {
+func CountConditionsLogicalAnd(
+	cli client.Client,
+	policy *nmstatev1.NodeNetworkConfigurationPolicy,
+	filter LogicalConditionCountFilter) (int, error) {
 	conditionCount := 0
 	enactments := nmstatev1beta1.NodeNetworkConfigurationEnactmentList{}
 	policyLabelFilter := client.MatchingLabels{nmstate.EnactmentPolicyLabel: policy.Name}
 
-	if err := r.List(context.TODO(), &enactments, policyLabelFilter); err != nil {
-
-		return 0, fmt.Errorf("getting enactments failed", err)
+	if err := cli.List(context.TODO(), &enactments, policyLabelFilter); err != nil {
+		return 0, fmt.Errorf("getting enactments failed")
 	}
 
 	for enactmentIndex := range enactments.Items {
