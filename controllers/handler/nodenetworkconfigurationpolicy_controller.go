@@ -63,8 +63,8 @@ import (
 
 const (
 	ReconcileFailed    = "ReconcileFailed"
-	MaximumTimeBackoff = 30
-	RetriesUntilFail   = 5
+	MaximumTimeBackoff = 10
+	RetriesUntilFail   = 1
 )
 
 var (
@@ -263,7 +263,7 @@ func (r *NodeNetworkConfigurationPolicyReconciler) Reconcile(_ context.Context, 
 	log.Info("nmstate", "output", nmstateOutput)
 
 	enactmentConditions.NotifySuccess()
-	r.decrementUnavailableNodeCount(instance, enactmentInstance)
+	defer r.decrementUnavailableNodeCount(instance, enactmentInstance)
 	r.forceNNSRefresh(nodeName)
 
 	return ctrl.Result{}, nil
