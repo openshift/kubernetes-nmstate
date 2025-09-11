@@ -45,6 +45,7 @@ import (
 	openshiftoperatorv1 "github.com/openshift/api/operator/v1"
 
 	"github.com/nmstate/kubernetes-nmstate/api/names"
+	"github.com/nmstate/kubernetes-nmstate/api/shared"
 	nmstatev1 "github.com/nmstate/kubernetes-nmstate/api/v1"
 	"github.com/nmstate/kubernetes-nmstate/pkg/cluster"
 	"github.com/nmstate/kubernetes-nmstate/pkg/environment"
@@ -200,7 +201,7 @@ func (r *NMStateReconciler) applyNetworkPolicies(instance *nmstatev1.NMState) er
 func (r *NMStateReconciler) applyRBAC(instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 
@@ -319,8 +320,22 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 
 	probeConfig := instance.Spec.ProbeConfiguration
 
+	metricsConfig := instance.Spec.MetricsConfiguration
+	if metricsConfig.BindAddress == "" {
+		metricsConfig = nmstatev1.NMStateMetricsConfiguration{
+			BindAddress: ":8089",
+		}
+	}
+
+	logLevelHandlerCommandArg := ""
+	handlerReadinessProbeExtraArg := ""
+	if instance.Spec.LogLevel == shared.LogLevelDebug {
+		logLevelHandlerCommandArg = "debug"
+		handlerReadinessProbeExtraArg = "-vv"
+	}
+
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
@@ -335,6 +350,9 @@ func (r *NMStateReconciler) applyHandler(instance *nmstatev1.NMState) error {
 	data.Data["HandlerAffinity"] = handlerAffinity
 	data.Data["SelfSignConfiguration"] = selfSignConfiguration
 	data.Data["ProbeConfiguration"] = probeConfig
+	data.Data["MetricsConfiguration"] = metricsConfig
+	data.Data["LogLevelHandlerCommandArg"] = logLevelHandlerCommandArg
+	data.Data["HandlerReadinessProbeExtraArg"] = handlerReadinessProbeExtraArg
 
 	isOpenShift, err := cluster.IsOpenShift(r.APIClient)
 	if err != nil {
@@ -515,7 +533,11 @@ func (r *NMStateReconciler) apply(ctx context.Context, newObj *unstructured.Unst
 		if err := r.Client.Patch(ctx, newObj, client.MergeFrom(oldObj)); err != nil {
 			return fmt.Errorf("failed patching %q \"%s:%s: %w", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName(), err)
 		}
-		r.Log.Info("failed strategic patch but succeeded fallback %q \"%s:%s", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName())
+		r.Log.Info("failed strategic patch but succeeded fallback",
+			"kind", newObj.GetKind(),
+			"namespace", newObj.GetNamespace(),
+			"name", newObj.GetName(),
+		)
 	}
 	return nil
 }
