@@ -110,7 +110,7 @@ var _ = Describe("NMState controller reconcile", func() {
 		reconciler.Log = ctrl.Log.WithName("controllers").WithName("NMState")
 		os.Setenv("HANDLER_NAMESPACE", handlerNamespace)
 		os.Setenv("OPERATOR_NAMESPACE", operatorNamespace)
-		os.Setenv("HANDLER_IMAGE", handlerImage)
+		os.Setenv("RELATED_IMAGE_HANDLER_IMAGE", handlerImage)
 		os.Setenv("HANDLER_IMAGE_PULL_POLICY", imagePullPolicy)
 		os.Setenv("HANDLER_PREFIX", handlerPrefix)
 		os.Setenv("MONITORING_NAMESPACE", monitoringNamespace)
