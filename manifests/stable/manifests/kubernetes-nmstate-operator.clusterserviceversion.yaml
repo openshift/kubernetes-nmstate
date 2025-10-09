@@ -20,7 +20,7 @@ metadata:
     createdAt: "2022-02-21 08:46:16"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
-    olm.skipRange: '>=4.3.0 <4.16.0'
+    olm.skipRange: ">=4.3.0 <4.16.0"
     operatorframework.io/suggested-namespace: openshift-nmstate
     operators.openshift.io/infrastructure-features: '["disconnected"]'
     operators.operatorframework.io/builder: operator-sdk-v1.22.2
