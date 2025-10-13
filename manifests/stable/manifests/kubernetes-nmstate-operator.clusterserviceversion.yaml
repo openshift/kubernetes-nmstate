@@ -16,7 +16,7 @@ metadata:
     capabilities: Basic Install
     categories: OpenShift Optional
     certified: "false"
-    containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.19
+    containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.20
     createdAt: "2025-08-20T05:45:09Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
