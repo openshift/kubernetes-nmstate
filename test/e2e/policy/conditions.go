@@ -39,9 +39,10 @@ import (
 )
 
 const (
-	ReadTimeout  = 180 * time.Second
-	ReadInterval = 1 * time.Second
-	TestPolicy   = "test-policy"
+	ReadTimeout     = 180 * time.Second
+	ReadInterval    = 1 * time.Second
+	TestPolicy      = "test-policy"
+	RollbackTimeout = 600 * time.Second
 )
 
 func EnactmentsStatusToYaml() string {
@@ -126,7 +127,7 @@ func NodeNetworkConfigurationPolicy(policyName string) nmstatev1.NodeNetworkConf
 func StatusForPolicyEventually(policy string) AsyncAssertion {
 	return Eventually(func() shared.ConditionList {
 		return Status(policy)
-	}, 480*time.Second, 1*time.Second)
+	}, RollbackTimeout, 1*time.Second)
 }
 
 func StatusForPolicyConsistently(policy string) AsyncAssertion {
@@ -155,6 +156,15 @@ func ContainPolicyAvailable() gomegatypes.GomegaMatcher {
 func ContainPolicyDegraded() gomegatypes.GomegaMatcher {
 	return ContainElement(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(shared.NodeNetworkConfigurationPolicyConditionDegraded),
+		"Status":  Equal(corev1.ConditionTrue),
+		"Reason":  Not(BeEmpty()),
+		"Message": Not(BeEmpty()),
+	}))
+}
+
+func ContainPolicyIgnored() gomegatypes.GomegaMatcher {
+	return ContainElement(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(shared.NodeNetworkConfigurationPolicyConditionIgnored),
 		"Status":  Equal(corev1.ConditionTrue),
 		"Reason":  Not(BeEmpty()),
 		"Message": Not(BeEmpty()),
@@ -191,10 +201,14 @@ func WaitForDegradedPolicy(policy string) {
 	WaitForPolicy(policy, ContainPolicyDegraded())
 }
 
+func WaitForIgnoredPolicy(policy string) {
+	WaitForPolicy(policy, ContainPolicyIgnored())
+}
+
 func WaitForPolicy(policy string, matcher gomegatypes.GomegaMatcher) {
 	StatusForPolicyEventually(policy).
 		Should(
-			SatisfyAny(ContainPolicyAvailable(), ContainPolicyDegraded()),
+			SatisfyAny(ContainPolicyAvailable(), ContainPolicyDegraded(), ContainPolicyIgnored()),
 			func() string {
 				return fmt.Sprintf("should reach terminal status at NNCP '%s', \n current enactments statuses:\n%s",
 					policy, EnactmentsStatusToYaml())

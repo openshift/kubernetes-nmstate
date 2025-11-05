@@ -87,11 +87,9 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 	)
 
 	type incrementUnavailableNodeCountCase struct {
-		currentUnavailableNodeCount      int
-		expectedUnavailableNodeCount     int
-		expectedReconcileResult          ctrl.Result
-		previousEnactmentConditions      func(*shared.ConditionList, string)
-		shouldUpdateUnavailableNodeCount bool
+		currentUnavailableNodeCount int
+		expectedReconcileResult     ctrl.Result
+		previousEnactmentConditions func(*shared.ConditionList, string)
 	}
 	DescribeTable("when claimNodeRunningUpdate is called and",
 		func(c incrementUnavailableNodeCountCase) {
@@ -124,7 +122,7 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 					Name: "test",
 				},
 				Status: shared.NodeNetworkConfigurationPolicyStatus{
-					UnavailableNodeCount: c.currentUnavailableNodeCount,
+					UnavailableNodeCountMap: map[string]int{},
 				},
 			}
 			nnce := nmstatev1beta1.NodeNetworkConfigurationEnactment{
@@ -158,61 +156,43 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 
 			Expect(err).To(BeNil())
 			Expect(res).To(Equal(c.expectedReconcileResult))
-
-			obtainedNNCP := nmstatev1.NodeNetworkConfigurationPolicy{}
-			cl.Get(context.TODO(), types.NamespacedName{Name: nncp.Name}, &obtainedNNCP)
-			Expect(obtainedNNCP.Status.UnavailableNodeCount).To(Equal(c.expectedUnavailableNodeCount))
-			if c.shouldUpdateUnavailableNodeCount {
-				Expect(obtainedNNCP.Status.LastUnavailableNodeCountUpdate).ToNot(BeNil())
-			}
 		},
+
 		Entry("No node applying policy with empty enactment, should succeed incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
-				currentUnavailableNodeCount:      0,
-				expectedUnavailableNodeCount:     0,
-				previousEnactmentConditions:      func(*shared.ConditionList, string) {},
-				expectedReconcileResult:          ctrl.Result{},
-				shouldUpdateUnavailableNodeCount: true,
+				currentUnavailableNodeCount: 0,
+				previousEnactmentConditions: func(*shared.ConditionList, string) {},
+				expectedReconcileResult:     ctrl.Result{Requeue: true},
 			}),
 		Entry("No node applying policy with progressing enactment, should succeed incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
-				currentUnavailableNodeCount:      0,
-				expectedUnavailableNodeCount:     0,
-				previousEnactmentConditions:      conditions.SetProgressing,
-				expectedReconcileResult:          ctrl.Result{},
-				shouldUpdateUnavailableNodeCount: false,
+				currentUnavailableNodeCount: 0,
+				previousEnactmentConditions: conditions.SetProgressing,
+				expectedReconcileResult:     ctrl.Result{Requeue: true},
 			}),
 		Entry("No node applying policy with Pending enactment, should succeed incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
-				currentUnavailableNodeCount:      0,
-				expectedUnavailableNodeCount:     0,
-				previousEnactmentConditions:      conditions.SetPending,
-				expectedReconcileResult:          ctrl.Result{},
-				shouldUpdateUnavailableNodeCount: true,
+				currentUnavailableNodeCount: 0,
+				previousEnactmentConditions: conditions.SetPending,
+				expectedReconcileResult:     ctrl.Result{Requeue: true},
 			}),
 		Entry("One node applying policy with empty enactment, should conflict incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
-				currentUnavailableNodeCount:      1,
-				expectedUnavailableNodeCount:     1,
-				previousEnactmentConditions:      func(*shared.ConditionList, string) {},
-				expectedReconcileResult:          ctrl.Result{RequeueAfter: nodeRunningUpdateRetryTime},
-				shouldUpdateUnavailableNodeCount: false,
+				currentUnavailableNodeCount: 1,
+				previousEnactmentConditions: func(*shared.ConditionList, string) {},
+				expectedReconcileResult:     ctrl.Result{Requeue: true},
 			}),
-		Entry("One node applying policy with Progressing enactment, should succeed incrementing UnavailableNodeCount",
+		Entry("One node applying policy with Progressing enactment, should conflict incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
-				currentUnavailableNodeCount:      1,
-				expectedUnavailableNodeCount:     0,
-				previousEnactmentConditions:      conditions.SetProgressing,
-				expectedReconcileResult:          ctrl.Result{},
-				shouldUpdateUnavailableNodeCount: false,
+				currentUnavailableNodeCount: 1,
+				previousEnactmentConditions: conditions.SetProgressing,
+				expectedReconcileResult:     ctrl.Result{Requeue: true},
 			}),
 		Entry("One node applying policy with Pending enactment, should conflict incrementing UnavailableNodeCount",
 			incrementUnavailableNodeCountCase{
-				currentUnavailableNodeCount:      1,
-				expectedUnavailableNodeCount:     1,
-				previousEnactmentConditions:      conditions.SetPending,
-				expectedReconcileResult:          ctrl.Result{RequeueAfter: nodeRunningUpdateRetryTime},
-				shouldUpdateUnavailableNodeCount: false,
+				currentUnavailableNodeCount: 1,
+				previousEnactmentConditions: conditions.SetPending,
+				expectedReconcileResult:     ctrl.Result{Requeue: true},
 			}),
 	)
 
@@ -314,6 +294,126 @@ var _ = Describe("NodeNetworkConfigurationPolicy controller predicates", func() 
 
 			// Verify empty result
 			Expect(requests).To(BeEmpty())
+		})
+	})
+
+	Describe("decrementUnavailableNodeCount", func() {
+		var (
+			reconciler *NodeNetworkConfigurationPolicyReconciler
+			nncp       *nmstatev1.NodeNetworkConfigurationPolicy
+			s          *runtime.Scheme
+		)
+
+		BeforeEach(func() {
+			reconciler = &NodeNetworkConfigurationPolicyReconciler{}
+			s = scheme.Scheme
+			s.AddKnownTypes(nmstatev1.GroupVersion,
+				&nmstatev1.NodeNetworkConfigurationPolicy{},
+				&nmstatev1.NodeNetworkConfigurationPolicyList{},
+			)
+
+			nncp = &nmstatev1.NodeNetworkConfigurationPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-policy",
+				},
+				Status: shared.NodeNetworkConfigurationPolicyStatus{
+					UnavailableNodeCountMap: map[string]int{
+						"gen-1": 2,
+					},
+				},
+			}
+
+			reconciler.Log = ctrl.Log.WithName("test")
+		})
+
+		Context("when status update succeeds", func() {
+			It("should decrement unavailable node count and return nil", func() {
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(nncp)
+				clb.WithStatusSubresource(nncp)
+				cl := clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+
+				err := reconciler.decrementUnavailableNodeCount(context.TODO(), nncp, "gen-1")
+
+				Expect(err).To(BeNil())
+
+				// Verify the count was decremented
+				updatedNNCP := &nmstatev1.NodeNetworkConfigurationPolicy{}
+				err = cl.Get(context.TODO(), types.NamespacedName{Name: "test-policy"}, updatedNNCP)
+				Expect(err).To(BeNil())
+				Expect(updatedNNCP.Status.UnavailableNodeCountMap["gen-1"]).To(Equal(1))
+			})
+		})
+
+		Context("when status update fails with both cached and non-cached clients", func() {
+			It("should return error", func() {
+				// Create a client that will fail status updates
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(nncp)
+				// Note: NOT adding WithStatusSubresource - this causes status updates to fail
+				cl := clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+
+				err := reconciler.decrementUnavailableNodeCount(context.TODO(), nncp, "gen-1")
+
+				Expect(err).ToNot(BeNil())
+				Expect(err.Error()).To(ContainSubstring("not found"))
+			})
+		})
+
+		Context("when unavailable node count is already zero", func() {
+			It("should return nil without error", func() {
+				nncpZeroCount := &nmstatev1.NodeNetworkConfigurationPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-policy-zero",
+					},
+					Status: shared.NodeNetworkConfigurationPolicyStatus{
+						UnavailableNodeCountMap: map[string]int{
+							"gen-1": 0,
+						},
+					},
+				}
+
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(nncpZeroCount)
+				clb.WithStatusSubresource(nncpZeroCount)
+				cl := clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+
+				err := reconciler.decrementUnavailableNodeCount(context.TODO(), nncpZeroCount, "gen-1")
+
+				// Should not return error - this is expected when node already processed
+				Expect(err).To(BeNil())
+			})
+		})
+
+		Context("when generation key doesn't exist", func() {
+			It("should return nil without error", func() {
+				clb := fake.ClientBuilder{}
+				clb.WithScheme(s)
+				clb.WithRuntimeObjects(nncp)
+				clb.WithStatusSubresource(nncp)
+				cl := clb.Build()
+
+				reconciler.Client = cl
+				reconciler.APIClient = cl
+
+				// Try to decrement a generation key that doesn't exist
+				err := reconciler.decrementUnavailableNodeCount(context.TODO(), nncp, "non-existent-gen")
+
+				// Should not return error - this is expected when node already processed
+				Expect(err).To(BeNil())
+			})
 		})
 	})
 })

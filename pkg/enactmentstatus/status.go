@@ -38,7 +38,12 @@ var (
 	allErrors = func(error) bool { return true }
 )
 
-func Update(cli client.Client, key types.NamespacedName, statusSetter func(*nmstate.NodeNetworkConfigurationEnactmentStatus)) error {
+func Update(
+	ctx context.Context,
+	cli client.Client,
+	key types.NamespacedName,
+	statusSetter func(*nmstate.NodeNetworkConfigurationEnactmentStatus),
+) error {
 	logger := log.WithValues("enactment", key.Name)
 
 	// Some network configuration can break api server connectivity temporally and that
@@ -46,7 +51,7 @@ func Update(cli client.Client, key types.NamespacedName, statusSetter func(*nmst
 	// forever in progress too, this retry allow to overcome that issue.
 	return retry.OnError(retry.DefaultRetry, allErrors, func() error {
 		instance := &nmstatev1beta1.NodeNetworkConfigurationEnactment{}
-		err := cli.Get(context.TODO(), key, instance)
+		err := cli.Get(ctx, key, instance)
 		if err != nil {
 			return errors.Wrap(err, "getting enactment failed")
 		}
@@ -55,7 +60,7 @@ func Update(cli client.Client, key types.NamespacedName, statusSetter func(*nmst
 
 		logger.Info(fmt.Sprintf("status: %+v", instance.Status))
 
-		return cli.Status().Update(context.TODO(), instance)
+		return cli.Status().Update(ctx, instance)
 	})
 }
 
@@ -65,4 +70,12 @@ func IsProgressing(conditions *nmstate.ConditionList) bool {
 		return true
 	}
 	return false
+}
+
+func IsRetrying(conditions *nmstate.ConditionList) bool {
+	failedCond := conditions.Find(nmstate.NodeNetworkConfigurationEnactmentConditionFailing)
+	progressingCond := conditions.Find(nmstate.NodeNetworkConfigurationEnactmentConditionProgressing)
+	return failedCond != nil && progressingCond != nil &&
+		failedCond.Status == corev1.ConditionTrue &&
+		progressingCond.Status == corev1.ConditionTrue
 }
