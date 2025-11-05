@@ -39,7 +39,7 @@ var _ = Describe("NodeSelector", func() {
 		testNodeSelector            = map[string]string{"testKey": "testValue"}
 		numberOfEnactmentsForPolicy = func(policyName string) int {
 			nncp := nodeNetworkConfigurationPolicy(policyName)
-			numberOfMatchingEnactments, _, err := enactment.CountByPolicy(testenv.Client, &nncp)
+			numberOfMatchingEnactments, _, err := enactment.CountByPolicy(context.Background(), testenv.Client, &nncp)
 			ExpectWithOffset(1, err).ToNot(HaveOccurred())
 			return numberOfMatchingEnactments
 		}
@@ -49,7 +49,7 @@ var _ = Describe("NodeSelector", func() {
 			Byf("Set policy %s with not matching node selector", bridge1)
 			// use linuxBrUpNoPorts to not affect the nodes secondary interfaces state
 			setDesiredStateWithPolicyAndNodeSelectorEventually(bridge1, linuxBrUpNoPorts(bridge1), testNodeSelector)
-			policy.WaitForAvailablePolicy(bridge1)
+			policy.WaitForIgnoredPolicy(bridge1)
 		})
 
 		AfterEach(func() {
@@ -88,7 +88,7 @@ var _ = Describe("NodeSelector", func() {
 				By("Add test label to node")
 				addLabelsToNode(nodes[0], testNodeSelector)
 				//TODO: Remove this when webhook retest policy status when node labels are changed
-				time.Sleep(3 * time.Second)
+				time.Sleep(10 * time.Second)
 				policy.WaitForAvailablePolicy(bridge1)
 			})
 			AfterEach(func() {
@@ -104,8 +104,8 @@ var _ = Describe("NodeSelector", func() {
 				BeforeEach(func() {
 					removeLabelsFromNode(nodes[0], testNodeSelector)
 					//TODO: Remove this when webhook retest policy status when node labels are changed
-					time.Sleep(3 * time.Second)
-					policy.WaitForAvailablePolicy(bridge1)
+					time.Sleep(10 * time.Second)
+					policy.WaitForIgnoredPolicy(bridge1)
 				})
 				It("should remove the not matching enactment", func() {
 					Expect(numberOfEnactmentsForPolicy(bridge1)).To(Equal(0), "should remove the not matching enactment")
@@ -117,7 +117,7 @@ var _ = Describe("NodeSelector", func() {
 
 func addLabelsToNode(nodeName string, labelsToAdd map[string]string) {
 	node := corev1.Node{}
-	err := testenv.Client.Get(context.TODO(), types.NamespacedName{Name: nodeName}, &node)
+	err := testenv.Client.Get(context.Background(), types.NamespacedName{Name: nodeName}, &node)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "should success retrieving node to change labels")
 
 	if len(node.Labels) == 0 {
@@ -127,13 +127,13 @@ func addLabelsToNode(nodeName string, labelsToAdd map[string]string) {
 			node.Labels[k] = v
 		}
 	}
-	err = testenv.Client.Update(context.TODO(), &node)
+	err = testenv.Client.Update(context.Background(), &node)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "should success updating node with new labels")
 }
 
 func removeLabelsFromNode(nodeName string, labelsToRemove map[string]string) {
 	node := corev1.Node{}
-	err := testenv.Client.Get(context.TODO(), types.NamespacedName{Name: nodeName}, &node)
+	err := testenv.Client.Get(context.Background(), types.NamespacedName{Name: nodeName}, &node)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "should success retrieving node to remove labels")
 
 	if len(node.Labels) == 0 {
@@ -144,6 +144,6 @@ func removeLabelsFromNode(nodeName string, labelsToRemove map[string]string) {
 		delete(node.Labels, k)
 	}
 
-	err = testenv.Client.Update(context.TODO(), &node)
+	err = testenv.Client.Update(context.Background(), &node)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "should success updating node with label delete")
 }

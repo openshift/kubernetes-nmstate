@@ -22,7 +22,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	goruntime "runtime"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -96,7 +95,7 @@ var _ = Describe("NMState controller reconcile", func() {
 		cl                         client.Client
 		reconciler                 NMStateReconciler
 		existingNMStateName        = "nmstate"
-		defaultHandlerNodeSelector = map[string]string{"kubernetes.io/os": "linux", "kubernetes.io/arch": goruntime.GOARCH}
+		defaultHandlerNodeSelector = map[string]string{corev1.LabelOSStable: "linux"}
 		customHandlerNodeSelector  = map[string]string{"selector_1": "value_1", "selector_2": "value_2"}
 		handlerTolerations         = []corev1.Toleration{
 			{
@@ -180,7 +179,7 @@ var _ = Describe("NMState controller reconcile", func() {
 		reconciler.Log = ctrl.Log.WithName("controllers").WithName("NMState")
 		os.Setenv("HANDLER_NAMESPACE", handlerNamespace)
 		os.Setenv("OPERATOR_NAMESPACE", operatorNamespace)
-		os.Setenv("HANDLER_IMAGE", handlerImage)
+		os.Setenv("RELATED_IMAGE_HANDLER_IMAGE", handlerImage)
 		os.Setenv("HANDLER_IMAGE_PULL_POLICY", imagePullPolicy)
 		os.Setenv("HANDLER_PREFIX", handlerPrefix)
 		os.Setenv("MONITORING_NAMESPACE", monitoringNamespace)
