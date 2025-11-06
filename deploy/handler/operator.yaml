@@ -350,7 +350,7 @@ spec:
           {"effect": "PreferredDuringScheduling"}
     spec:
       # Needed to force vlan filtering config with iproute commands until
-      # future nmstate/NM is in place.
+      # latest nmstate/NM is in place.
       # https://github.com/nmstate/nmstate/pull/440
       hostNetwork: true
       # Use Default to get node's DNS configuration [1]
@@ -508,6 +508,7 @@ webhooks:
   - name: nodenetworkconfigurationpolicies-mutate.nmstate.io
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None
+    failurePolicy: Ignore
     clientConfig:
       service:
         name: {{template "handlerPrefix" .}}nmstate-webhook
@@ -521,6 +522,7 @@ webhooks:
   - name: nodenetworkconfigurationpolicies-status-mutate.nmstate.io
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None
+    failurePolicy: Ignore
     clientConfig:
       service:
         name: {{template "handlerPrefix" .}}nmstate-webhook
@@ -534,6 +536,7 @@ webhooks:
   - name: nodenetworkconfigurationpolicies-timestamp-mutate.nmstate.io
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None
+    failurePolicy: Ignore
     clientConfig:
       service:
         name: {{template "handlerPrefix" .}}nmstate-webhook
