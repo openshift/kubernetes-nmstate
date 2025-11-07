@@ -219,7 +219,7 @@ func (r *NMStateReconciler) applyNetworkPolicies(ctx context.Context, instance *
 func (r *NMStateReconciler) applyRBAC(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 
@@ -349,7 +349,7 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 	}
 
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
