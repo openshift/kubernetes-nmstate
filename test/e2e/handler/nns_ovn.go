@@ -55,6 +55,7 @@ var _ = Describe("[nns] NNS OVN bridge mappings", func() {
 				ShouldNot(ContainElement(state.PhysicalNetworks{Name: networkName, Bridge: bridgeName}))
 
 		}
+		resetDesiredStateForNodes()
 	})
 
 	It("are listed", func() {
