@@ -33,6 +33,9 @@ $(yq4) --inplace eval '.metadata.annotations += {"features.operators.openshift.i
 $(yq4) --inplace eval '.metadata.annotations += {"features.operators.openshift.io/token-auth-azure": "false"}' ${BUNDLE_DIR}/manifests/kubernetes-nmstate-operator.clusterserviceversion.yaml
 $(yq4) --inplace eval '.metadata.annotations += {"features.operators.openshift.io/token-auth-gcp": "false"}' ${BUNDLE_DIR}/manifests/kubernetes-nmstate-operator.clusterserviceversion.yaml
 
+# We want olm.skipRange to use double quotes, not single.
+$(yq4) --inplace '.metadata.annotations."olm.skipRange" style="double"' ${BUNDLE_DIR}/manifests/kubernetes-nmstate-operator.clusterserviceversion.yaml
+
 # delete unneeded files
 rm -f ${BUNDLE_DIR}/manifests/nmstate.io_nodenetwork*.yaml
 
