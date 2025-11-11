@@ -3,15 +3,15 @@ WORKDIR /go/src/github.com/openshift/kubernetes-nmstate
 COPY . .
 RUN GO111MODULE=on go build --mod=vendor -o build/_output/bin/manager ./cmd/handler/
 
-FROM registry.ci.openshift.org/ocp/4.21:base-rhel9
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 RUN \
-    dnf -y update && \
-    dnf -y install \
-        nmstate \
-        iputils \
-        iproute && \
-    dnf clean all
+    microdnf -y update && \
+    microdnf -y install \
+                nmstate \
+                iputils \
+                iproute && \
+    microdnf clean all
 
 
 COPY --from=builder /go/src/github.com/openshift/kubernetes-nmstate/build/_output/bin/manager  /usr/bin/
