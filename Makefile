@@ -122,6 +122,8 @@ check: lint vet whitespace-check gofmt-check promlint-check
 
 format: whitespace-format gofmt
 
+pre-push: check test/unit
+
 vet:
 	GOFLAGS=-mod=mod go vet ./...
 
@@ -304,6 +306,7 @@ olm-push: bundle-push index-push
 	all \
 	check \
 	format \
+	pre-push \
 	vet \
 	handler \
 	push-handler \
