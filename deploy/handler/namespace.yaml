@@ -13,4 +13,5 @@ metadata:
     pod-security.kubernetes.io/warn: privileged
 {{- if .IsOpenShift }}
     openshift.io/cluster-monitoring: "true"
+    openshift.io/node-selector: ""
 {{- end }}
