@@ -198,6 +198,13 @@ func (r *NMStateReconciler) applyNamespace(ctx context.Context, instance *nmstat
 	data := render.MakeRenderData()
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
+
+	isOpenShift, err := cluster.IsOpenShift(r.APIClient)
+	if err != nil {
+		return err
+	}
+	data.Data["IsOpenShift"] = isOpenShift
+
 	return r.renderAndApply(ctx, instance, data, "namespace", false)
 }
 
