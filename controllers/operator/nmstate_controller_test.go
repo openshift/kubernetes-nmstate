@@ -19,6 +19,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -670,6 +672,608 @@ func isKeyMatching(a, b corev1.Toleration) bool {
 		return true
 	}
 	return false
+}
+
+var _ = Describe("NMState controller apply function", func() {
+	var (
+		reconciler NMStateReconciler
+		ctx        context.Context
+		testScheme *runtime.Scheme
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		testScheme = runtime.NewScheme()
+
+		// Add core Kubernetes types to the scheme
+		corev1.AddToScheme(testScheme)
+		appsv1.AddToScheme(testScheme)
+
+		reconciler = NMStateReconciler{
+			Scheme: testScheme,
+			Log:    ctrl.Log.WithName("test"),
+		}
+	})
+
+	Describe("convertToTypedObjects", func() {
+		Context("when converting a known type (ConfigMap)", func() {
+			It("should successfully convert unstructured to typed objects", func() {
+				// Create unstructured ConfigMap objects
+				oldConfigMap := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "test-config",
+							"namespace": "test-ns",
+						},
+						"data": map[string]interface{}{
+							"key1": "value1",
+						},
+					},
+				}
+
+				newConfigMap := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "test-config",
+							"namespace": "test-ns",
+						},
+						"data": map[string]interface{}{
+							"key1": "value1",
+							"key2": "value2",
+						},
+					},
+				}
+
+				typedOld, typedNew, err := reconciler.convertToTypedObjects(oldConfigMap, newConfigMap)
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(typedOld).ToNot(BeNil())
+				Expect(typedNew).ToNot(BeNil())
+
+				// Verify the typed objects are ConfigMaps
+				oldCM, ok := typedOld.(*corev1.ConfigMap)
+				Expect(ok).To(BeTrue())
+				Expect(oldCM.Name).To(Equal("test-config"))
+				Expect(oldCM.Data["key1"]).To(Equal("value1"))
+
+				newCM, ok := typedNew.(*corev1.ConfigMap)
+				Expect(ok).To(BeTrue())
+				Expect(newCM.Name).To(Equal("test-config"))
+				Expect(newCM.Data["key1"]).To(Equal("value1"))
+				Expect(newCM.Data["key2"]).To(Equal("value2"))
+			})
+		})
+
+		Context("when converting an unknown type", func() {
+			It("should return an error", func() {
+				unknownObj := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "unknown.io/v1",
+						"kind":       "UnknownResource",
+						"metadata": map[string]interface{}{
+							"name": "test",
+						},
+					},
+				}
+
+				_, _, err := reconciler.convertToTypedObjects(unknownObj, unknownObj)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("scheme doesn't recognize GVK"))
+			})
+		})
+
+		Context("when object has no GroupVersionKind", func() {
+			It("should return an error", func() {
+				emptyGVKObj := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"metadata": map[string]interface{}{
+							"name": "test",
+						},
+					},
+				}
+
+				_, _, err := reconciler.convertToTypedObjects(emptyGVKObj, emptyGVKObj)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("object has no GroupVersionKind set"))
+			})
+		})
+	})
+
+	Describe("preserveMetadata", func() {
+		Context("when working with Namespace objects", func() {
+			It("should merge existing and new labels", func() {
+				oldNamespace := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "Namespace",
+						"metadata": map[string]interface{}{
+							"name": "test-ns",
+							"labels": map[string]interface{}{
+								"existing-label":  "existing-value",
+								"common-label":    "old-value",
+								"custom.io/label": "custom-value",
+							},
+							"annotations": map[string]interface{}{
+								"existing-annotation": "existing-value",
+								"common-annotation":   "old-value",
+							},
+						},
+					},
+				}
+
+				newNamespace := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "Namespace",
+						"metadata": map[string]interface{}{
+							"name": "test-ns",
+							"labels": map[string]interface{}{
+								"new-label":    "new-value",
+								"common-label": "new-value",
+							},
+							"annotations": map[string]interface{}{
+								"new-annotation":    "new-value",
+								"common-annotation": "new-value",
+							},
+						},
+					},
+				}
+
+				err := reconciler.preserveMetadata(oldNamespace, newNamespace)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				// Check merged labels
+				labels := newNamespace.GetLabels()
+				Expect(labels).To(HaveLen(4))
+				Expect(labels["existing-label"]).To(Equal("existing-value")) // preserved
+				Expect(labels["new-label"]).To(Equal("new-value"))           // added
+				Expect(labels["common-label"]).To(Equal("new-value"))        // new takes precedence
+				Expect(labels["custom.io/label"]).To(Equal("custom-value"))  // preserved
+
+				// Check merged annotations
+				annotations := newNamespace.GetAnnotations()
+				Expect(annotations).To(HaveLen(3))
+				Expect(annotations["existing-annotation"]).To(Equal("existing-value")) // preserved
+				Expect(annotations["new-annotation"]).To(Equal("new-value"))           // added
+				Expect(annotations["common-annotation"]).To(Equal("new-value"))        // new takes precedence
+			})
+
+			It("should handle empty labels and annotations gracefully", func() {
+				oldNamespace := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "Namespace",
+						"metadata": map[string]interface{}{
+							"name": "test-ns",
+						},
+					},
+				}
+
+				newNamespace := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "Namespace",
+						"metadata": map[string]interface{}{
+							"name": "test-ns",
+							"labels": map[string]interface{}{
+								"new-label": "new-value",
+							},
+						},
+					},
+				}
+
+				err := reconciler.preserveMetadata(oldNamespace, newNamespace)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				labels := newNamespace.GetLabels()
+				Expect(labels).To(HaveLen(1))
+				Expect(labels["new-label"]).To(Equal("new-value"))
+			})
+
+			It("should preserve existing labels when new object has no labels", func() {
+				oldNamespace := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "Namespace",
+						"metadata": map[string]interface{}{
+							"name": "test-ns",
+							"labels": map[string]interface{}{
+								"existing-label": "existing-value",
+							},
+						},
+					},
+				}
+
+				newNamespace := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "Namespace",
+						"metadata": map[string]interface{}{
+							"name": "test-ns",
+						},
+					},
+				}
+
+				err := reconciler.preserveMetadata(oldNamespace, newNamespace)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				labels := newNamespace.GetLabels()
+				Expect(labels).To(HaveLen(1))
+				Expect(labels["existing-label"]).To(Equal("existing-value"))
+			})
+		})
+
+		Context("when working with non-Namespace objects", func() {
+			It("should not modify metadata for other resource types", func() {
+				oldConfigMap := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name": "test-cm",
+							"labels": map[string]interface{}{
+								"existing-label": "existing-value",
+							},
+						},
+					},
+				}
+
+				newConfigMap := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name": "test-cm",
+							"labels": map[string]interface{}{
+								"new-label": "new-value",
+							},
+						},
+					},
+				}
+
+				originalLabels := newConfigMap.GetLabels()
+
+				err := reconciler.preserveMetadata(oldConfigMap, newConfigMap)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				// Labels should remain unchanged for non-Namespace objects
+				labels := newConfigMap.GetLabels()
+				Expect(labels).To(Equal(originalLabels))
+				Expect(labels).To(HaveLen(1))
+				Expect(labels["new-label"]).To(Equal("new-value"))
+			})
+		})
+	})
+
+	Describe("apply function", func() {
+		var (
+			fakeClient client.Client
+		)
+
+		BeforeEach(func() {
+			fakeClient = fake.NewClientBuilder().WithScheme(testScheme).Build()
+			reconciler.Client = fakeClient
+		})
+
+		Context("when creating a new object", func() {
+			It("should create the object successfully", func() {
+				newConfigMap := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "new-config",
+							"namespace": "default",
+						},
+						"data": map[string]interface{}{
+							"key": "value",
+						},
+					},
+				}
+
+				err := reconciler.apply(ctx, newConfigMap)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify the object was created
+				created := &corev1.ConfigMap{}
+				key := client.ObjectKey{Name: "new-config", Namespace: "default"}
+				err = fakeClient.Get(ctx, key, created)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(created.Data["key"]).To(Equal("value"))
+			})
+		})
+
+		Context("when updating an existing namespace with custom labels", func() {
+			It("should preserve existing custom labels and annotations", func() {
+				// Create initial Namespace with custom labels and annotations
+				initialNamespace := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-namespace",
+						Labels: map[string]string{
+							"custom.io/label": "custom-value",
+							"existing-label":  "existing-value",
+							"name":            "test-namespace", // This will be overridden
+						},
+						Annotations: map[string]string{
+							"custom.io/annotation": "custom-annotation-value",
+							"existing-annotation":  "existing-annotation-value",
+						},
+					},
+				}
+				err := fakeClient.Create(ctx, initialNamespace)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Update with unstructured namespace object (simulating manifest application)
+				updatedNamespace := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "Namespace",
+						"metadata": map[string]interface{}{
+							"name": "test-namespace",
+							"labels": map[string]interface{}{
+								"name":                               "test-namespace",
+								"pod-security.kubernetes.io/enforce": "privileged",
+								"pod-security.kubernetes.io/audit":   "privileged",
+								"pod-security.kubernetes.io/warn":    "privileged",
+								"openshift.io/cluster-monitoring":    "true",
+							},
+						},
+					},
+				}
+
+				err = reconciler.apply(ctx, updatedNamespace)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify the namespace was updated and custom metadata was preserved
+				updated := &corev1.Namespace{}
+				key := client.ObjectKey{Name: "test-namespace"}
+				err = fakeClient.Get(ctx, key, updated)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Check that new labels from manifest are present
+				Expect(updated.Labels["name"]).To(Equal("test-namespace"))
+				Expect(updated.Labels["pod-security.kubernetes.io/enforce"]).To(Equal("privileged"))
+				Expect(updated.Labels["pod-security.kubernetes.io/audit"]).To(Equal("privileged"))
+				Expect(updated.Labels["pod-security.kubernetes.io/warn"]).To(Equal("privileged"))
+				Expect(updated.Labels["openshift.io/cluster-monitoring"]).To(Equal("true"))
+
+				// Check that existing custom labels are preserved
+				Expect(updated.Labels["custom.io/label"]).To(Equal("custom-value"))
+				Expect(updated.Labels["existing-label"]).To(Equal("existing-value"))
+
+				// Check that existing custom annotations are preserved
+				Expect(updated.Annotations["custom.io/annotation"]).To(Equal("custom-annotation-value"))
+				Expect(updated.Annotations["existing-annotation"]).To(Equal("existing-annotation-value"))
+			})
+		})
+
+		Context("when updating an existing object with known type", func() {
+			It("should use strategic merge patch", func() {
+				// Create initial ConfigMap
+				initialConfigMap := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "existing-config",
+						Namespace: "default",
+					},
+					Data: map[string]string{
+						"key1": "value1",
+						"key3": "value3",
+					},
+				}
+				err := fakeClient.Create(ctx, initialConfigMap)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Update with unstructured object
+				updatedConfigMap := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "existing-config",
+							"namespace": "default",
+						},
+						"data": map[string]interface{}{
+							"key1": "updated-value1",
+							"key2": "value2",
+						},
+					},
+				}
+
+				err = reconciler.apply(ctx, updatedConfigMap)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify the object was updated with strategic merge
+				updated := &corev1.ConfigMap{}
+				key := client.ObjectKey{Name: "existing-config", Namespace: "default"}
+				err = fakeClient.Get(ctx, key, updated)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updated.Data["key1"]).To(Equal("updated-value1"))
+				Expect(updated.Data["key2"]).To(Equal("value2"))
+				// key3 should be preserved due to strategic merge behavior
+			})
+		})
+
+		Context("when updating an existing object with unknown type", func() {
+			It("should fall back to regular merge patch", func() {
+				// Create initial object as unstructured (simulating unknown type)
+				initialObj := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "unknown.io/v1",
+						"kind":       "UnknownResource",
+						"metadata": map[string]interface{}{
+							"name":      "test-unknown",
+							"namespace": "default",
+						},
+						"spec": map[string]interface{}{
+							"field1": "value1",
+						},
+					},
+				}
+				err := fakeClient.Create(ctx, initialObj)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Update the object
+				updatedObj := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "unknown.io/v1",
+						"kind":       "UnknownResource",
+						"metadata": map[string]interface{}{
+							"name":      "test-unknown",
+							"namespace": "default",
+						},
+						"spec": map[string]interface{}{
+							"field1": "updated-value1",
+							"field2": "value2",
+						},
+					},
+				}
+
+				err = reconciler.apply(ctx, updatedObj)
+
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify the object was updated
+				updated := &unstructured.Unstructured{}
+				updated.SetGroupVersionKind(initialObj.GroupVersionKind())
+				key := client.ObjectKey{Name: "test-unknown", Namespace: "default"}
+				err = fakeClient.Get(ctx, key, updated)
+				Expect(err).ToNot(HaveOccurred())
+
+				spec, found, err := unstructured.NestedMap(updated.Object, "spec")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(found).To(BeTrue())
+				Expect(spec["field1"]).To(Equal("updated-value1"))
+				Expect(spec["field2"]).To(Equal("value2"))
+			})
+		})
+
+		Context("when client operations fail", func() {
+			It("should return appropriate errors for Get failures", func() {
+				// Use a client that will fail on Get operations
+				failingClient := &failingFakeClient{
+					Client:    fakeClient,
+					failOnGet: true,
+				}
+				reconciler.Client = failingClient
+
+				testObj := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "test",
+							"namespace": "default",
+						},
+					},
+				}
+
+				err := reconciler.apply(ctx, testObj)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("simulated Get failure"))
+			})
+
+			It("should return appropriate errors for Create failures", func() {
+				failingClient := &failingFakeClient{
+					Client:       fakeClient,
+					failOnCreate: true,
+				}
+				reconciler.Client = failingClient
+
+				testObj := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "test",
+							"namespace": "default",
+						},
+					},
+				}
+
+				err := reconciler.apply(ctx, testObj)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed creating"))
+			})
+
+			It("should return appropriate errors for Patch failures", func() {
+				// Create initial object
+				initialObj := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "default",
+					},
+				}
+				err := fakeClient.Create(ctx, initialObj)
+				Expect(err).ToNot(HaveOccurred())
+
+				failingClient := &failingFakeClient{
+					Client:      fakeClient,
+					failOnPatch: true,
+				}
+				reconciler.Client = failingClient
+
+				testObj := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "test",
+							"namespace": "default",
+						},
+					},
+				}
+
+				err = reconciler.apply(ctx, testObj)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed patching"))
+			})
+		})
+	})
+})
+
+// failingFakeClient is a test helper that simulates client failures
+type failingFakeClient struct {
+	client.Client
+	failOnGet    bool
+	failOnCreate bool
+	failOnPatch  bool
+}
+
+func (f *failingFakeClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if f.failOnGet {
+		return fmt.Errorf("simulated Get failure")
+	}
+	return f.Client.Get(ctx, key, obj, opts...)
+}
+
+func (f *failingFakeClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	if f.failOnCreate {
+		return fmt.Errorf("simulated Create failure")
+	}
+	return f.Client.Create(ctx, obj, opts...)
+}
+
+func (f *failingFakeClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	if f.failOnPatch {
+		return fmt.Errorf("simulated Patch failure")
+	}
+	return f.Client.Patch(ctx, obj, patch, opts...)
 }
 
 // isEffectMatching check if tolerations arguments match the effects
