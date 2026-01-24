@@ -85,7 +85,7 @@ metadata:
     categories: Networking
     certified: "false"
     containerImage: quay.io/nmstate/kubernetes-nmstate-operator:latest
-    createdAt: "2025-07-03T14:30:18Z"
+    createdAt: "2026-01-23T14:07:03Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     operatorframework.io/suggested-namespace: nmstate
@@ -310,6 +310,7 @@ spec:
                   capabilities:
                     drop:
                     - ALL
+                terminationMessagePolicy: FallbackToLogsOnError
               priorityClassName: system-cluster-critical
               securityContext:
                 runAsNonRoot: true
