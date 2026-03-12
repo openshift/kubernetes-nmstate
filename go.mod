@@ -110,7 +110,6 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiserver v0.35.1 // indirect
 	k8s.io/cli-runtime v0.35.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect
@@ -129,6 +128,8 @@ require (
 	github.com/nmstate/kubernetes-nmstate/api v0.0.0-00010101000000-000000000000
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
+	github.com/openshift/api v0.0.0-20260213155647-8fe9fe363807
+	github.com/openshift/cluster-network-operator v0.0.0-20250121144718-0dfccc148f81
 	github.com/pkg/errors v0.9.1
 	github.com/qinqon/kube-admission-webhook v0.21.1
 	github.com/spf13/pflag v1.0.9
