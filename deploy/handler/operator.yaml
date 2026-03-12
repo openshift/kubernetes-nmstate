@@ -625,6 +625,35 @@ spec:
     matchLabels:
       prometheus.nmstate.io: "true"
 ---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
+    app.kubernetes.io/name: kubernetes-nmstate-operator
+    app.kubernetes.io/part-of: kubernetes-nmstate-operator
+  name: kubernetes-nmstate-prometheus-rules
+spec:
+  groups:
+    - name: kubernetes-nmstate-operator-monitoring.rules
+      rules:
+        - expr: sum by (name) (kubernetes_nmstate_features_applied)
+          record: cluster:kubernetes_nmstate_features_applied:sum
+        - expr: sum by (type) (kubernetes_nmstate_network_interfaces)
+          record: cluster:kubernetes_nmstate_network_interfaces:sum
+        - expr: sum by (node) (kubernetes_nmstate_network_interfaces)
+          record: node:kubernetes_nmstate_network_interfaces:sum
+        - expr: sum by (node, type) (kubernetes_nmstate_network_interfaces)
+          record: node:kubernetes_nmstate_network_interfaces_by_type:sum
+        - expr: sum by (type) (kubernetes_nmstate_routes)
+          record: cluster:kubernetes_nmstate_routes_by_type:sum
+        - expr: sum by (ip_stack) (kubernetes_nmstate_routes)
+          record: cluster:kubernetes_nmstate_routes_by_ip_stack:sum
+        - expr: sum by (node) (kubernetes_nmstate_routes)
+          record: node:kubernetes_nmstate_routes:sum
+        - expr: sum by (node, ip_stack) (kubernetes_nmstate_routes)
+          record: node:kubernetes_nmstate_routes_by_ip_stack:sum
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
