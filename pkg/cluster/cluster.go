@@ -18,10 +18,50 @@ limitations under the License.
 package cluster
 
 import (
+	"context"
+	"crypto/tls"
+	"fmt"
+
+	tlspkg "github.com/openshift/controller-runtime-common/pkg/tls"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var log = logf.Log.WithName("cluster")
 
 // IsOpenShift returns always true since this is the openshift fork
 func IsOpenShift(kclient client.Client) (bool, error) {
 	return true, nil
+}
+
+// FetchOpenShiftTLSOpts detects OpenShift and fetches the TLS profile for
+// secure serving. Returns nil on non-OpenShift clusters.
+func FetchOpenShiftTLSOpts(cfg *rest.Config, scheme *runtime.Scheme) (func(*tls.Config), error) {
+	kclient, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return nil, fmt.Errorf("failed creating client for TLS profile detection: %w", err)
+	}
+
+	isOCP, err := IsOpenShift(kclient)
+	if err != nil {
+		return nil, fmt.Errorf("could not determine if running on OpenShift: %w", err)
+	}
+	if !isOCP {
+		return nil, nil
+	}
+
+	tlsProfileSpec, err := tlspkg.FetchAPIServerTLSProfile(context.Background(), kclient)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get TLS profile from API server: %w", err)
+	}
+
+	tlsOpts, unsupportedCiphers := tlspkg.NewTLSConfigFromProfile(tlsProfileSpec)
+	if len(unsupportedCiphers) > 0 {
+		log.Info("TLS configuration contains unsupported ciphers that will be ignored",
+			"unsupportedCiphers", unsupportedCiphers)
+	}
+
+	return tlsOpts, nil
 }
