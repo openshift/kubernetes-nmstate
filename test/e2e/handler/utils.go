@@ -571,6 +571,9 @@ func nodeInterfacesState(node string, exclude []string) []byte {
 		if !hasState {
 			state = "unknown"
 		}
+		if state == "ignore" {
+			continue
+		}
 		ifacesState[name.(string)] = state.(string)
 	}
 	ret, err := json.Marshal(ifacesState)
