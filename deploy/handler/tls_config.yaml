@@ -1,0 +1,9 @@
+{{- if .IsOpenShift }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{template "handlerPrefix" .}}nmstate-tls-config
+  namespace: {{ .HandlerNamespace }}
+data:
+  profile.json: '{{ .TLSProfileJSON }}'
+{{- end }}
