@@ -27,8 +27,6 @@ import (
 	"strconv"
 	"time"
 
-	configv1 "github.com/openshift/api/config/v1"
-	tlspkg "github.com/openshift/controller-runtime-common/pkg/tls"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -70,6 +68,7 @@ import (
 	nmstatelog "github.com/nmstate/kubernetes-nmstate/pkg/log"
 	"github.com/nmstate/kubernetes-nmstate/pkg/monitoring"
 	"github.com/nmstate/kubernetes-nmstate/pkg/nmstatectl"
+	nmstatetls "github.com/nmstate/kubernetes-nmstate/pkg/tls"
 	"github.com/nmstate/kubernetes-nmstate/pkg/webhook"
 )
 
@@ -90,12 +89,13 @@ func init() {
 
 	utilruntime.Must(nmstatev1.AddToScheme(scheme))
 	utilruntime.Must(nmstatev1beta1.AddToScheme(scheme))
-	utilruntime.Must(configv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 
 	metrics.Registry.MustRegister(monitoring.AppliedFeatures)
 	metrics.Registry.MustRegister(monitoring.NetworkInterfaces)
 	metrics.Registry.MustRegister(monitoring.NetworkRoutes)
+	metrics.Registry.MustRegister(monitoring.PolicyStatus)
+	metrics.Registry.MustRegister(monitoring.EnactmentStatus)
 }
 
 func main() {
@@ -223,15 +223,15 @@ func setupTLSProfileWatcher(mgr manager.Manager, cancel context.CancelFunc) erro
 		return fmt.Errorf("failed creating client for TLS profile watcher: %w", err)
 	}
 
-	tlsProfileSpec, err := tlspkg.FetchAPIServerTLSProfile(context.Background(), apiClient)
+	tlsProfileSpec, err := nmstatetls.FetchAPIServerTLSProfile(context.Background(), apiClient)
 	if err != nil {
 		return fmt.Errorf("unable to get initial TLS profile for watcher: %w", err)
 	}
 
-	return (&tlspkg.SecurityProfileWatcher{
+	return (&nmstatetls.SecurityProfileWatcher{
 		Client:                mgr.GetClient(),
 		InitialTLSProfileSpec: tlsProfileSpec,
-		OnProfileChange: func(ctx context.Context, oldSpec, newSpec configv1.TLSProfileSpec) {
+		OnProfileChange: func(ctx context.Context, oldSpec, newSpec nmstatetls.TLSProfileSpec) {
 			setupLog.Info("TLS profile has changed, initiating shutdown to reload",
 				"oldProfile", oldSpec, "newProfile", newSpec)
 			cancel()
@@ -593,6 +593,26 @@ func setupMetricsManager(mgr manager.Manager) error {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create NodeNetworkState metrics controller", "metrics", "NMState")
+		return err
+	}
+
+	setupLog.Info("Creating Metrics NodeNetworkConfigurationPolicy controller")
+	if err := (&controllersmetrics.NodeNetworkConfigurationPolicyReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("metrics").WithName("NodeNetworkConfigurationPolicy"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create NodeNetworkConfigurationPolicy metrics controller", "metrics", "NMState")
+		return err
+	}
+
+	setupLog.Info("Creating Metrics NodeNetworkConfigurationEnactment status controller")
+	if err := (&controllersmetrics.NodeNetworkConfigurationEnactmentStatusReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("metrics").WithName("NodeNetworkConfigurationEnactmentStatus"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create NodeNetworkConfigurationEnactment status metrics controller", "metrics", "NMState")
 		return err
 	}
 

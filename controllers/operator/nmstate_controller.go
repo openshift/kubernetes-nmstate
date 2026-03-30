@@ -41,15 +41,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/openshift/cluster-network-operator/pkg/render"
-
-	openshiftoperatorv1 "github.com/openshift/api/operator/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/nmstate/kubernetes-nmstate/api/names"
 	"github.com/nmstate/kubernetes-nmstate/api/shared"
 	nmstatev1 "github.com/nmstate/kubernetes-nmstate/api/v1"
 	"github.com/nmstate/kubernetes-nmstate/pkg/environment"
-	nmstaterenderer "github.com/nmstate/kubernetes-nmstate/pkg/render"
+	"github.com/nmstate/kubernetes-nmstate/pkg/render"
 )
 
 const (
@@ -81,7 +80,7 @@ type NMStateReconciler struct {
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=list;get
 // +kubebuilder:rbac:groups="console.openshift.io",resources=consoleplugins,verbs="*"
 // +kubebuilder:rbac:groups="operator.openshift.io",resources=consoles,verbs=list;get;watch;update
-// +kubebuilder:rbac:groups="monitoring.coreos.com",resources=servicemonitors,verbs=list;get;watch;update;create;patch
+// +kubebuilder:rbac:groups="monitoring.coreos.com",resources=servicemonitors;prometheusrules,verbs=list;get;watch;update;create;patch
 // +kubebuilder:rbac:groups="networking.k8s.io",resources=networkpolicies,verbs="*"
 
 func (r *NMStateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -213,7 +212,7 @@ func (r *NMStateReconciler) applyNetworkPolicies(ctx context.Context, instance *
 func (r *NMStateReconciler) applyRBAC(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 
@@ -230,7 +229,7 @@ func (r *NMStateReconciler) applyRBAC(ctx context.Context, instance *nmstatev1.N
 func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
 	// Register ToYaml template method
-	data.Funcs["toYaml"] = nmstaterenderer.ToYaml
+	data.Funcs["toYaml"] = render.ToYaml
 	// Prepare defaults
 	masterExistsNoScheduleTolerations := []corev1.Toleration{
 		{
@@ -339,7 +338,7 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 	}
 
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
+	data.Data["HandlerImage"] = os.Getenv("RELATED_IMAGE_HANDLER_IMAGE")
 	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
 	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
 	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
@@ -364,7 +363,7 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 
 func (r *NMStateReconciler) applyOpenshiftUIPlugin(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
-	data.Funcs["toYaml"] = nmstaterenderer.ToYaml
+	data.Funcs["toYaml"] = render.ToYaml
 	data.Data["PluginNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "openshift-nmstate")
 	data.Data["PluginName"] = environment.GetEnvVar("PLUGIN_NAME", "nmstate-console-plugin")
 	data.Data["PluginImage"] = environment.GetEnvVar("PLUGIN_IMAGE", "quay.io/nmstate/nmstate-console-plugin:release-1.0.0")
@@ -381,20 +380,30 @@ func (r *NMStateReconciler) applyOpenshiftUIPlugin(ctx context.Context, instance
 func (r *NMStateReconciler) patchOpenshiftConsolePlugin(ctx context.Context) error {
 	// Enable console plugin for nmstate-console if not already enabled
 	pluginName := environment.GetEnvVar("PLUGIN_NAME", "nmstate-console-plugin")
+
+	consoleObj := &unstructured.Unstructured{}
+	consoleObj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "operator.openshift.io",
+		Version: "v1",
+		Kind:    "Console",
+	})
+
 	consoleKey := client.ObjectKey{Name: "cluster"}
-	consoleObj := &openshiftoperatorv1.Console{}
 	if err := r.Get(ctx, consoleKey, consoleObj); err != nil {
 		r.Log.Error(err, "Could not get consoles.operator.openshift.io resource")
 		return err
 	}
 
-	if !stringInSlice(pluginName, consoleObj.Spec.Plugins) {
+	plugins, _, _ := unstructured.NestedStringSlice(consoleObj.Object, "spec", "plugins")
+	if !stringInSlice(pluginName, plugins) {
 		r.Log.Info("Enabling kubevirt plugin in Console")
-		consoleObj.Spec.Plugins = append(consoleObj.Spec.Plugins, pluginName)
-		err := r.Update(ctx, consoleObj)
-		if err != nil {
+		plugins = append(plugins, pluginName)
+		if err := unstructured.SetNestedStringSlice(consoleObj.Object, plugins, "spec", "plugins"); err != nil {
+			return fmt.Errorf("could not set spec.plugins: %w", err)
+		}
+		if err := r.Update(ctx, consoleObj); err != nil {
 			r.Log.Error(err, fmt.Sprintf("Could not update resource - APIVersion: %s, Kind: %s, Name: %s",
-				consoleObj.APIVersion, consoleObj.Kind, consoleObj.Name))
+				consoleObj.GetAPIVersion(), consoleObj.GetKind(), consoleObj.GetName()))
 			return err
 		}
 	}
