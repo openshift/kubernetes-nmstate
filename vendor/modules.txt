@@ -250,15 +250,6 @@ github.com/onsi/gomega/matchers/support/goraph/edge
 github.com/onsi/gomega/matchers/support/goraph/node
 github.com/onsi/gomega/matchers/support/goraph/util
 github.com/onsi/gomega/types
-# github.com/openshift/api v0.0.0-20260213155647-8fe9fe363807
-## explicit; go 1.24.0
-github.com/openshift/api/config/v1
-# github.com/openshift/controller-runtime-common v0.0.0-20260307102856-5db94f69ad3a
-## explicit; go 1.25.0
-github.com/openshift/controller-runtime-common/pkg/tls
-# github.com/openshift/library-go v0.0.0-20260213153706-03f1709971c5
-## explicit; go 1.24.0
-github.com/openshift/library-go/pkg/crypto
 # github.com/peterbourgon/diskv v2.0.1+incompatible
 ## explicit
 github.com/peterbourgon/diskv
