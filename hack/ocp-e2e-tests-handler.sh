@@ -48,13 +48,21 @@ oc create -f test/e2e/nmstate.yaml
 # First wait for the handler pods to be created
 while ! oc get pods -n ${NAMESPACE} | grep handler; do sleep 1; done
 # Then wait for them to be ready
-while oc get pods -n ${NAMESPACE} | grep "0/1"; do sleep 1; done
+if [ -n "${SKIP_CONSOLE}" ]; then
+    while oc get pods -n ${NAMESPACE} | grep -v console-plugin | grep "0/1"; do sleep 1; done
+else
+    while oc get pods -n ${NAMESPACE} | grep "0/1"; do sleep 1; done
+fi
 # NOTE(bnemec): The test being filtered with "bridged" was re-enabled in 4.8, but seems to be consistently failing on OCP.
 make test-e2e-handler E2E_TEST_ARGS="--skip=\"${SKIPPED_TESTS}\" --flake-attempts=${FLAKE_ATTEMPTS}" E2E_TEST_TIMEOUT=4h
 
 # Reconfigure operator to use custom DNS target for the probe. Wait for handlers to be restarted.
 oc apply -f test/e2e/nmstate-custom-dns.yaml
 sleep 10
-while oc get pods -n ${NAMESPACE} | grep "0/1"; do sleep 1; done
+if [ -n "${SKIP_CONSOLE}" ]; then
+    while oc get pods -n ${NAMESPACE} | grep -v console-plugin | grep "0/1"; do sleep 1; done
+else
+    while oc get pods -n ${NAMESPACE} | grep "0/1"; do sleep 1; done
+fi
 FOCUS_TESTS="Dns configuration"
 make test-e2e-handler E2E_TEST_ARGS="--focus=\"${FOCUS_TESTS}\" --skip=\"${SKIPPED_TESTS}\" --flake-attempts=${FLAKE_ATTEMPTS}" E2E_TEST_TIMEOUT=4h
