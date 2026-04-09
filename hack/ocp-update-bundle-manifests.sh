@@ -19,6 +19,11 @@ MONITORING_NAMESPACE=${MONITORING_NAMESPACE} \
 VERSION=${VERSION} CHANNELS=${CHANNEL},alpha DEFAULT_CHANNEL=${CHANNEL} \
 BUNDLE_DIR=${BUNDLE_DIR} MANIFEST_BASES_DIR=${MANIFEST_BASES_DIR} make bundle
 
+# Use fieldRef to dynamically resolve namespace at runtime instead of hardcoding it.
+# This is required for AllNamespaces OLM install mode support.
+$(yq4) --inplace eval '(.spec.install.spec.deployments[].spec.template.spec.containers[].env[] | select(.name == "HANDLER_NAMESPACE")) |= {"name": .name, "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}}' ${BUNDLE_DIR}/manifests/kubernetes-nmstate-operator.clusterserviceversion.yaml
+$(yq4) --inplace eval '(.spec.install.spec.deployments[].spec.template.spec.containers[].env[] | select(.name == "OPERATOR_NAMESPACE")) |= {"name": .name, "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}}' ${BUNDLE_DIR}/manifests/kubernetes-nmstate-operator.clusterserviceversion.yaml
+
 # add the cluster permissions to use the privileged security context constraint to the nmstate-operator SA in the CSV
 $(yq4) --inplace eval '.spec.install.spec.clusterPermissions[] |= select(.rules[]) |= select(.serviceAccountName == "nmstate-operator").rules += {"apiGroups":["security.openshift.io"],"resources":["securitycontextconstraints"],"verbs":["use"],"resourceNames":["privileged"]}' ${BUNDLE_DIR}/manifests/kubernetes-nmstate-operator.clusterserviceversion.yaml
 
