@@ -209,11 +209,15 @@ spec:
                       - name: HANDLER_IMAGE_PULL_POLICY
                         value: IfNotPresent
                       - name: HANDLER_NAMESPACE
-                        value: openshift-nmstate
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.namespace
                       - name: MONITORING_NAMESPACE
                         value: openshift-monitoring
                       - name: OPERATOR_NAMESPACE
-                        value: openshift-nmstate
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.namespace
                       - name: KUBE_RBAC_PROXY_IMAGE
                         value: quay.io/openshift/origin-kube-rbac-proxy:4.22
                     image: quay.io/openshift/origin-kubernetes-nmstate-operator:4.22
@@ -292,7 +296,7 @@ spec:
       type: SingleNamespace
     - supported: false
       type: MultiNamespace
-    - supported: false
+    - supported: true
       type: AllNamespaces
   keywords:
     - nmstate
