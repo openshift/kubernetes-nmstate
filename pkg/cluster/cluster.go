@@ -18,12 +18,13 @@ limitations under the License.
 package cluster
 
 import (
-	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"os"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/rest"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nmstatetls "github.com/nmstate/kubernetes-nmstate/pkg/tls"
@@ -32,37 +33,49 @@ import (
 
 var log = logf.Log.WithName("cluster")
 
-// IsOpenShift returns always true since this is the openshift fork
+// IsOpenShift returns true if the current cluster is an OpenShift/OKD cluster.
 func IsOpenShift(kclient client.Client) (bool, error) {
+	// if the cluster has the securityContextConstraint resource of the group security.openshift.io, then it is most likely an OCP/OKD cluster
+	sccGVR := schema.GroupVersion{Group: "security.openshift.io", Version: "v1"}.WithResource("securitycontextconstraints")
+	_, err := kclient.RESTMapper().ResourcesFor(sccGVR)
+
+	if err != nil {
+		if apimeta.IsNoMatchError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("could not determine if running on OCP/OKD: %w", err)
+	}
+
 	return true, nil
 }
 
-// FetchOpenShiftTLSOpts detects OpenShift and fetches the TLS profile for
-// secure serving. Returns nil on non-OpenShift clusters.
-func FetchOpenShiftTLSOpts(cfg *rest.Config, scheme *runtime.Scheme) (func(*tls.Config), error) {
-	kclient, err := client.New(cfg, client.Options{Scheme: scheme})
+// IsOpenShiftFromEnv returns true if the IS_OPENSHIFT environment variable
+// is set to "true". The operator sets this variable on all handler-deployed
+// pods so they can skip the API server discovery call at startup.
+func IsOpenShiftFromEnv() bool {
+	return os.Getenv("IS_OPENSHIFT") == "true"
+}
+
+// FetchTLSProfileFromFile reads a TLS profile spec from a JSON file (mounted
+// from a ConfigMap) and returns the TLS options function and the raw spec.
+// This avoids calling the API server at startup, which is critical when
+// network connectivity may be temporarily unavailable.
+func FetchTLSProfileFromFile(path string) (func(*tls.Config), nmstatetls.TLSProfileSpec, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating client for TLS profile detection: %w", err)
+		return nil, nmstatetls.TLSProfileSpec{}, fmt.Errorf("failed reading TLS profile from %s: %w", path, err)
 	}
 
-	isOCP, err := IsOpenShift(kclient)
-	if err != nil {
-		return nil, fmt.Errorf("could not determine if running on OpenShift: %w", err)
-	}
-	if !isOCP {
-		return nil, nil
+	var spec nmstatetls.TLSProfileSpec
+	if err := json.Unmarshal(data, &spec); err != nil {
+		return nil, nmstatetls.TLSProfileSpec{}, fmt.Errorf("failed parsing TLS profile from %s: %w", path, err)
 	}
 
-	tlsProfileSpec, err := nmstatetls.FetchAPIServerTLSProfile(context.Background(), kclient)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get TLS profile from API server: %w", err)
-	}
-
-	tlsOpts, unsupportedCiphers := nmstatetls.NewTLSConfigFromProfile(tlsProfileSpec)
+	tlsOpts, unsupportedCiphers := nmstatetls.NewTLSConfigFromProfile(spec)
 	if len(unsupportedCiphers) > 0 {
 		log.Info("TLS configuration contains unsupported ciphers that will be ignored",
 			"unsupportedCiphers", unsupportedCiphers)
 	}
 
-	return tlsOpts, nil
+	return tlsOpts, spec, nil
 }

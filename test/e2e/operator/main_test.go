@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	testenv "github.com/nmstate/kubernetes-nmstate/test/env"
+	"github.com/nmstate/kubernetes-nmstate/test/environment"
 	knmstatereporter "github.com/nmstate/kubernetes-nmstate/test/reporter"
 )
 
@@ -56,11 +57,14 @@ var _ = BeforeSuite(func() {
 	// Change to root directory some test expect that
 	os.Chdir("../../../")
 
-	defaultOperator = NewOperatorTestData(os.Getenv("HANDLER_NAMESPACE"), manifestsDir, manifestFiles)
+	defaultOperator = NewOperatorTestData(environment.GetVarWithDefault("HANDLER_NAMESPACE", "nmstate"), manifestsDir, manifestFiles)
 
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	testenv.Start()
+
+	By("Configuring lower retry values for E2E tests to speed up retry tests")
+	testenv.PatchHandlerRetryConfig()
 
 	By("Getting node list from cluster")
 	nodeList := corev1.NodeList{}
@@ -82,13 +86,6 @@ var _ = ReportBeforeEach(func(specReport ginkgotypes.SpecReport) {
 })
 
 var _ = ReportAfterEach(func(specReport ginkgotypes.SpecReport) {
-	// XXX(mko) This is a hack because in OCP CI we notice that AfterEach reporter is hanging
-	// indefinitely. We are simply ignoring it so that tests can proceed. An ultimate solution
-	// would be to implement a proper WithTimeout context which runs "runAndWait" function in the
-	// test/reporter/reporter.go
-	if !isKubevirtciCluster() {
-		return
-	}
 	knmstateReporter.ReportAfterEach(specReport)
 })
 
@@ -108,7 +105,7 @@ func podsShouldBeDistributedAtNodes(selectedNodes []corev1.Node, listOptions ...
 }
 
 func isKubevirtciCluster() bool {
-	return strings.Contains(os.Getenv("KUBECONFIG"), "kubevirtci")
+	return strings.Contains(environment.GetVarWithDefault("KUBECONFIG", ""), "kubevirtci")
 }
 
 func controlPlaneNodes() []corev1.Node {
