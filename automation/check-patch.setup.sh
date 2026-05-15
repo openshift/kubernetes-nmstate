@@ -5,8 +5,6 @@
 
 tmp_dir=/tmp/knmstate/
 
-. hack/sanitized-xtrace.sh
-
 rm -rf $tmp_dir
 mkdir -p $tmp_dir
 
