@@ -239,10 +239,10 @@ func (r *NMStateReconciler) applyNetworkPolicies(ctx context.Context, instance *
 
 func (r *NMStateReconciler) applyRBAC(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
 
 	if err := setClusterReaderExist(ctx, r.Client, data); err != nil {
 		return errors.Wrap(err, "failed checking if cluster-reader ClusterRole exists")
@@ -365,12 +365,12 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 		handlerReadinessProbeExtraArg = "-vv"
 	}
 
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
-	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
-	data.Data["KubeRBACProxyImage"] = os.Getenv("KUBE_RBAC_PROXY_IMAGE")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
+	data.Data["MonitoringNamespace"] = environment.GetEnvVar("MONITORING_NAMESPACE", "")
+	data.Data["KubeRBACProxyImage"] = environment.GetEnvVar("KUBE_RBAC_PROXY_IMAGE", "")
 	data.Data["InfraNodeSelector"] = infraNodeSelector
 	data.Data["InfraTolerations"] = infraTolerations
 	data.Data["WebhookAffinity"] = infraAffinity

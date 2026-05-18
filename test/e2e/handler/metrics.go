@@ -28,7 +28,7 @@ import (
 func getMetrics(token string) map[string]string {
 	bearer := "Authorization: Bearer " + token
 	return indexMetrics(runner.RunAtMetricsPod("curl", "-s", "-k", "--header",
-		bearer, "--header", "X-Authorization-Classification: notsecret", ":8089", "https://127.0.0.1:8443/metrics"))
+		bearer, ":8089", "https://127.0.0.1:8443/metrics"))
 }
 
 func getPrometheusToken() (string, error) {
@@ -43,7 +43,7 @@ func getPrometheusToken() (string, error) {
 
 func indexMetrics(metrics string) map[string]string {
 	metricsMap := map[string]string{}
-	for _, metric := range strings.Split(metrics, "\n") {
+	for metric := range strings.SplitSeq(metrics, "\n") {
 		if strings.Contains(metric, "#") { // Ignore comments
 			continue
 		}
