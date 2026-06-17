@@ -26,8 +26,6 @@ import (
 	"github.com/onsi/gomega/types"
 
 	nmstate "github.com/nmstate/kubernetes-nmstate/api/shared"
-
-	"github.com/nmstate/kubernetes-nmstate/test/environment"
 )
 
 func ethernetNicsState(states map[string]string) nmstate.State {
@@ -289,9 +287,7 @@ func vlanUpWithStaticIP(iface, ipAddress string) nmstate.State {
 }
 
 func resetPrimaryAndSecondaryNICs() nmstate.State {
-	noAdditionalNICs := environment.GetVarWithDefault("ENV_WITH_ONLY_ONE_NIC", "FALSE")
-	if noAdditionalNICs == "FALSE" {
-		return nmstate.NewState(fmt.Sprintf(`interfaces:
+	return nmstate.NewState(fmt.Sprintf(`interfaces:
   - name: %s
     type: ethernet
     state: up
@@ -318,13 +314,6 @@ func resetPrimaryAndSecondaryNICs() nmstate.State {
       enabled: false
 
 `, primaryNic, firstSecondaryNic, secondSecondaryNic))
-	} else {
-		return nmstate.NewState(fmt.Sprintf(`interfaces:
-  - name: %s
-    type: ethernet
-    state: up
-`, primaryNic))
-	}
 }
 
 func bridgeOnTheSecondaryInterfaceState() nmstate.State {
@@ -344,9 +333,9 @@ routes:
 `)
 }
 
-func matchingBond(expectedBond map[string]interface{}) types.GomegaMatcher {
-	expectedLinkAggregation := expectedBond["link-aggregation"].(map[string]interface{})
-	expectedOptions := expectedLinkAggregation["options"].(map[string]interface{})
+func matchingBond(expectedBond map[string]any) types.GomegaMatcher {
+	expectedLinkAggregation := expectedBond["link-aggregation"].(map[string]any)
+	expectedOptions := expectedLinkAggregation["options"].(map[string]any)
 	return SatisfyAll(
 		HaveKeyWithValue("name", expectedBond["name"]),
 		HaveKeyWithValue("type", expectedBond["type"]),

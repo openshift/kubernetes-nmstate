@@ -71,22 +71,37 @@ type NMStateReconciler struct {
 	daemonSets  []client.ObjectKey
 }
 
-// +kubebuilder:rbac:groups="",resources=services;endpoints;persistentvolumeclaims;events;configmaps;secrets;pods,verbs="*"
-// ,namespace="{{ .OperatorNamespace }}"
-// +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs="*",namespace="{{ .OperatorNamespace }}"
-// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs="*",namespace="{{ .OperatorNamespace }}"
-// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs="*"
-// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingadmissionpolicies;validatingadmissionpolicybindings,verbs="*"
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings;rolebindings;roles,verbs="*"
-// +kubebuilder:rbac:groups=nmstate.io,resources="*",verbs="*"
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources="*",verbs="*"
-// +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs="*"
-// +kubebuilder:rbac:groups="",resources=serviceaccounts;configmaps;namespaces,verbs="*"
+// Core resources: services, endpoints, events, configmaps need full CRUD for handler deployment manifests.
+// +kubebuilder:rbac:groups="",resources=services;endpoints;events;configmaps,verbs=get;list;watch;create;update;patch;delete
+// Pods are created indirectly via Deployments/DaemonSets — operator only needs read access.
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// Secrets: operator only deletes one obsolete webhook secret during cleanup; cert-manager (handler SA) handles creation.
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;delete
+// ServiceAccounts: operator creates handler SA.
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// Namespaces: operator creates handler namespace but never deletes it.
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=list;get
-// +kubebuilder:rbac:groups="console.openshift.io",resources=consoleplugins,verbs="*"
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+// Admission webhooks: operator manages webhook configurations for the handler.
+// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations;validatingadmissionpolicies;validatingadmissionpolicybindings,verbs=get;list;watch;create;update;patch;delete
+// RBAC: operator creates handler ClusterRoles/Roles and bindings.
+// escalate is required because the handler ClusterRole contains permissions the operator itself does not hold.
+// bind is required on roles/clusterroles to create bindings referencing those roles.
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;roles,verbs=get;list;watch;create;update;patch;delete;escalate;bind
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;rolebindings,verbs=get;list;watch;create;update;patch;delete
+// nmstate.io: explicit resources instead of wildcard; includes /status subresources.
+// +kubebuilder:rbac:groups=nmstate.io,resources=nmstates;nodenetworkstates;nodenetworkconfigurationpolicies;nodenetworkconfigurationenactments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nmstate.io,resources=nmstates/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nmstate.io,resources=nmstates/status;nodenetworkstates/status;nodenetworkconfigurationpolicies/status;nodenetworkconfigurationenactments/status,verbs=get;update;patch
+// CRDs: operator manages the 3 nmstate CRDs — no need for wildcard over all apiextensions resources.
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;create;update;patch;delete
+// Apps: cluster-scoped for handler DaemonSet and Deployments.
+// +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="console.openshift.io",resources=consoleplugins,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="operator.openshift.io",resources=consoles,verbs=list;get;watch;update
 // +kubebuilder:rbac:groups="monitoring.coreos.com",resources=servicemonitors;prometheusrules,verbs=list;get;watch;update;create;patch
-// +kubebuilder:rbac:groups="networking.k8s.io",resources=networkpolicies,verbs="*"
+// +kubebuilder:rbac:groups="networking.k8s.io",resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="config.openshift.io",resources=apiservers,verbs=get;list;watch
 
 func (r *NMStateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -239,10 +254,10 @@ func (r *NMStateReconciler) applyNetworkPolicies(ctx context.Context, instance *
 
 func (r *NMStateReconciler) applyRBAC(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
 
 	if err := setClusterReaderExist(ctx, r.Client, data); err != nil {
 		return errors.Wrap(err, "failed checking if cluster-reader ClusterRole exists")
@@ -365,12 +380,12 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 		handlerReadinessProbeExtraArg = "-vv"
 	}
 
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
-	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
-	data.Data["KubeRBACProxyImage"] = os.Getenv("KUBE_RBAC_PROXY_IMAGE")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
+	data.Data["MonitoringNamespace"] = environment.GetEnvVar("MONITORING_NAMESPACE", "")
+	data.Data["KubeRBACProxyImage"] = environment.GetEnvVar("KUBE_RBAC_PROXY_IMAGE", "")
 	data.Data["InfraNodeSelector"] = infraNodeSelector
 	data.Data["InfraTolerations"] = infraTolerations
 	data.Data["WebhookAffinity"] = infraAffinity
