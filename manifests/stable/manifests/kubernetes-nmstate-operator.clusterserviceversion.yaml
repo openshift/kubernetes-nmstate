@@ -17,7 +17,7 @@ metadata:
     categories: OpenShift Optional
     certified: "false"
     containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:5.0
-    createdAt: "2026-06-17T05:32:04Z"
+    createdAt: "2026-07-22T05:32:25Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     olm.skipRange: ">=4.3.0 <5.0.0"
@@ -349,8 +349,6 @@ spec:
                         valueFrom:
                           fieldRef:
                             fieldPath: metadata.namespace
-                      - name: KUBE_RBAC_PROXY_IMAGE
-                        value: quay.io/openshift/origin-kube-rbac-proxy:5.0
                     image: quay.io/openshift/origin-kubernetes-nmstate-operator:5.0
                     imagePullPolicy: IfNotPresent
                     livenessProbe:
