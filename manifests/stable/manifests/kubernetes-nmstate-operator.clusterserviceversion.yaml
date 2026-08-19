@@ -17,7 +17,7 @@ metadata:
     categories: OpenShift Optional
     certified: "false"
     containerImage: quay.io/openshift/origin-kubernetes-nmstate-operator:4.22
-    createdAt: "2026-03-30T05:35:10Z"
+    createdAt: "2026-08-12T15:33:52Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     olm.skipRange: ">=4.3.0 <4.22.0"
@@ -228,7 +228,6 @@ spec:
                       httpGet:
                         path: /healthz
                         port: healthprobe
-                      initialDelaySeconds: 10
                       periodSeconds: 10
                       successThreshold: 1
                       timeoutSeconds: 1
@@ -241,7 +240,6 @@ spec:
                       httpGet:
                         path: /readyz
                         port: healthprobe
-                      initialDelaySeconds: 10
                       periodSeconds: 10
                       successThreshold: 1
                       timeoutSeconds: 1
@@ -257,6 +255,13 @@ spec:
                       capabilities:
                         drop:
                           - ALL
+                    startupProbe:
+                      failureThreshold: 18
+                      httpGet:
+                        path: /readyz
+                        port: healthprobe
+                      initialDelaySeconds: 10
+                      periodSeconds: 10
                     terminationMessagePolicy: FallbackToLogsOnError
                 priorityClassName: system-cluster-critical
                 securityContext:
