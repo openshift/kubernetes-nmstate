@@ -3,7 +3,18 @@ WORKDIR /go/src/github.com/openshift/kubernetes-nmstate
 COPY . .
 RUN GO111MODULE=on go build --mod=vendor -o build/_output/bin/manager ./cmd/operator
 
+# Configure the DEFAULT:PQ crypto-policy so ML-KEM is available via OpenSSL.
+# See OPNET-806 / OCPSTRAT-3113. On FIPS clusters the :PQ subpolicy is
+# disabled automatically by the OS, so no special handling is required here.
+FROM registry.ci.openshift.org/ocp/5.0:base-rhel9 AS pqc
+RUN dnf install -y --nodocs crypto-policies-scripts && \
+    update-crypto-policies --set DEFAULT:PQ && \
+    dnf clean all && rm -rf /var/cache/*
+
 FROM registry.ci.openshift.org/ocp/5.0:base-rhel9
+
+# Enable the DEFAULT:PQ crypto-policy (post-quantum cryptography).
+COPY --from=pqc /etc/crypto-policies/ /etc/crypto-policies/
 
 COPY --from=builder /go/src/github.com/openshift/kubernetes-nmstate/build/_output/bin/manager /usr/bin/
 COPY deploy/crds/nmstate.io_nodenetwork*.yaml /bindata/kubernetes-nmstate/crds/
