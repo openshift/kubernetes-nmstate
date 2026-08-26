@@ -445,7 +445,7 @@ spec:
               command:
               - bash
               - -c
-              - "nmstatectl show -vvv 2>&1"
+              - "nmstatectl show lo -vvv 2>&1"
             initialDelaySeconds: 60
             periodSeconds: 60
             timeoutSeconds: 10
