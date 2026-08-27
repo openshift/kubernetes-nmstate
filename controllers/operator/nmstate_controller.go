@@ -491,12 +491,142 @@ func (r *NMStateReconciler) apply(ctx context.Context, newObj *unstructured.Unst
 		return nil
 	}
 	newObj.SetResourceVersion(oldObj.GetResourceVersion())
-	if err := r.Client.Patch(ctx, newObj, client.StrategicMergeFrom(oldObj)); err != nil {
+
+	// Preserve existing labels and annotations for certain resource types
+	if err := r.preserveMetadata(oldObj, newObj); err != nil {
+		return fmt.Errorf("failed to preserve metadata: %w", err)
+	}
+
+	// Try to convert unstructured objects to typed objects for strategic merge
+	typedOldObj, typedNewObj, err := r.convertToTypedObjects(oldObj, newObj)
+	if err != nil {
+		// If conversion fails, fall back to regular merge patch
+		r.Log.Info("Failed to convert to typed objects, using merge patch", "error", err, "kind", newObj.GetKind())
 		if err := r.Client.Patch(ctx, newObj, client.MergeFrom(oldObj)); err != nil {
 			return fmt.Errorf("failed patching %q \"%s:%s: %w", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName(), err)
 		}
-		r.Log.Info("failed strategic patch but succeeded fallback %q \"%s:%s", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName())
+		return nil
 	}
+
+	// Use strategic merge with typed objects
+	if err := r.Client.Patch(ctx, typedNewObj, client.StrategicMergeFrom(typedOldObj)); err != nil {
+		// If strategic merge fails, fall back to regular merge patch
+		r.Log.Info("Strategic merge failed, using merge patch", "error", err, "kind", newObj.GetKind())
+		if err := r.Client.Patch(ctx, newObj, client.MergeFrom(oldObj)); err != nil {
+			return fmt.Errorf("failed patching %q \"%s:%s: %w", newObj.GetKind(), newObj.GetNamespace(), newObj.GetName(), err)
+		}
+	}
+	return nil
+}
+
+// convertToTypedObjects attempts to convert unstructured objects to typed objects
+// using the runtime scheme. Returns the typed objects if successful, or an error if conversion fails.
+func (r *NMStateReconciler) convertToTypedObjects(oldObj, newObj *unstructured.Unstructured) (client.Object, client.Object, error) {
+	// Get the GroupVersionKind from the objects
+	gvk := newObj.GroupVersionKind()
+	if gvk.Empty() {
+		return nil, nil, fmt.Errorf("object has no GroupVersionKind set")
+	}
+
+	// Check if the scheme knows about this type
+	_, err := r.Scheme.New(gvk)
+	if err != nil {
+		return nil, nil, fmt.Errorf("scheme doesn't recognize GVK %v: %w", gvk, err)
+	}
+
+	// Convert old object
+	typedOldObj, err := r.Scheme.New(gvk)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create typed object for old: %w", err)
+	}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(oldObj.UnstructuredContent(), typedOldObj); err != nil {
+		return nil, nil, fmt.Errorf("failed to convert old object from unstructured: %w", err)
+	}
+
+	// Convert new object
+	typedNewObj, err := r.Scheme.New(gvk)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create typed object for new: %w", err)
+	}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(newObj.UnstructuredContent(), typedNewObj); err != nil {
+		return nil, nil, fmt.Errorf("failed to convert new object from unstructured: %w", err)
+	}
+
+	// Ensure the typed objects implement client.Object
+	typedOldClientObj, ok := typedOldObj.(client.Object)
+	if !ok {
+		return nil, nil, fmt.Errorf("converted old object does not implement client.Object")
+	}
+	typedNewClientObj, ok := typedNewObj.(client.Object)
+	if !ok {
+		return nil, nil, fmt.Errorf("converted new object does not implement client.Object")
+	}
+
+	return typedOldClientObj, typedNewClientObj, nil
+}
+
+// preserveMetadata merges existing labels and annotations from the old object into the new object
+// for resource types that don't handle metadata merging well with strategic merge patches.
+func (r *NMStateReconciler) preserveMetadata(oldObj, newObj *unstructured.Unstructured) error {
+	// Only preserve metadata for specific resource types that have issues with metadata merging
+	kind := newObj.GetKind()
+	if kind != "Namespace" {
+		// For most resources, strategic merge should handle metadata correctly
+		return nil
+	}
+
+	// Get existing labels and annotations from the old object
+	oldLabels := oldObj.GetLabels()
+	oldAnnotations := oldObj.GetAnnotations()
+
+	// Get new labels and annotations from the new object
+	newLabels := newObj.GetLabels()
+	newAnnotations := newObj.GetAnnotations()
+
+	// Merge labels: new labels take precedence, but preserve existing ones not in new
+	if oldLabels != nil || newLabels != nil {
+		mergedLabels := make(map[string]string)
+
+		// Start with existing labels
+		for k, v := range oldLabels {
+			mergedLabels[k] = v
+		}
+
+		// Override/add with new labels
+		for k, v := range newLabels {
+			mergedLabels[k] = v
+		}
+
+		newObj.SetLabels(mergedLabels)
+	}
+
+	// Merge annotations: new annotations take precedence, but preserve existing ones not in new
+	if oldAnnotations != nil || newAnnotations != nil {
+		mergedAnnotations := make(map[string]string)
+
+		// Start with existing annotations
+		for k, v := range oldAnnotations {
+			mergedAnnotations[k] = v
+		}
+
+		// Override/add with new annotations
+		for k, v := range newAnnotations {
+			mergedAnnotations[k] = v
+		}
+
+		newObj.SetAnnotations(mergedAnnotations)
+	}
+
+	r.Log.Info("Preserved metadata during merge",
+		"kind", kind,
+		"name", newObj.GetName(),
+		"oldLabels", len(oldLabels),
+		"newLabels", len(newLabels),
+		"mergedLabels", len(newObj.GetLabels()),
+		"oldAnnotations", len(oldAnnotations),
+		"newAnnotations", len(newAnnotations),
+		"mergedAnnotations", len(newObj.GetAnnotations()))
+
 	return nil
 }
 
