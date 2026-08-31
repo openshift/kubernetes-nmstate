@@ -18,8 +18,9 @@ installing a second release would conflict with the first one.
 ## Install
 
 ```shell
+VERSION=v0.87.0
 helm install nmstate oci://quay.io/nmstate/kubernetes-nmstate \
-  --version <version> \
+  --version "${VERSION#v}" \
   --namespace nmstate \
   --create-namespace
 ```
@@ -63,9 +64,10 @@ Helm does not modify custom resource definitions shipped in the chart's
 release tags use a leading `v`, unlike Helm chart versions:
 
 ```shell
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v<version>/nmstate.io_nmstates.yaml
+VERSION=v0.87.0
+kubectl apply -f "https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/nmstate.io_nmstates.yaml"
 helm upgrade nmstate oci://quay.io/nmstate/kubernetes-nmstate \
-  --version <version> \
+  --version "${VERSION#v}" \
   --namespace nmstate
 ```
 
