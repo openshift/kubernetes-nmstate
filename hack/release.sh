@@ -49,8 +49,9 @@ function create_github_release() {
 function upload_github_release_artifacts() {
 
     # Upload operator CRDs
-    for manifest in $(ls charts/kubernetes-nmstate/crds/nmstate.io_*nmstate*); do
-        upload $manifest
+    for manifest in charts/kubernetes-nmstate/crds/nmstate.io_*nmstate*; do
+        [[ -e "$manifest" ]] || { echo "No NMState CRD found" >&2; exit 1; }
+        upload "$manifest"
     done
 
     # Upload operator manifests
