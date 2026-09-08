@@ -1,0 +1,43 @@
+# OpenShift-specific targets and defaults, included after the upstream Makefile.
+
+PLUGIN_IMAGE_NAME ?= nmstate-console-plugin
+PLUGIN_IMAGE_TAG ?= latest
+PLUGIN_IMAGE_FULL_NAME ?= $(IMAGE_REPO)/$(PLUGIN_IMAGE_NAME):$(PLUGIN_IMAGE_TAG)
+# Replace upstream's empty default without overriding environment/CLI values.
+ifeq ($(origin PLUGIN_IMAGE),file)
+PLUGIN_IMAGE = $(IMAGE_REGISTRY)/$(PLUGIN_IMAGE_FULL_NAME)
+endif
+
+# ART image replacement uses HANDLER_IMAGE, not RELATED_IMAGE_*.
+HANDLER_IMAGE_ENV_VAR = HANDLER_IMAGE
+
+e2e_test_args = --vv -timeout=$(E2E_TEST_TIMEOUT) --slow-spec-threshold=60s $(E2E_TEST_ARGS)
+
+test-e2e-ocp: test-e2e-handler-ocp # deprecated. Use test-e2e-handler-ocp instead
+
+test-e2e-handler-ocp:
+	./hack/ocp-e2e-tests-handler.sh
+
+test-e2e-operator-ocp:
+	./hack/ocp-e2e-tests-operator.sh
+
+check-ocp-bundle: ocp-update-bundle-manifests
+	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
+
+test-e2e-azure-ocp:
+	./hack/ocp-e2e-tests-azure.sh
+
+test-e2e-handler-cloud-ocp:
+	./hack/ocp-e2e-tests-cloud.sh
+
+ocp-update-bundle-manifests: generate manifests
+	./hack/ocp-update-bundle-manifests.sh
+
+ocp-build-and-deploy-bundle: generate manifests
+	./hack/ocp-build-and-deploy-bundle.sh
+
+ocp-uninstall-bundle:
+	./hack/ocp-uninstall-bundle.sh
+
+# The downstream manifests/ directory otherwise shadows the render target.
+.PHONY: manifests

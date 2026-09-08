@@ -26,14 +26,9 @@ OPERATOR_IMAGE_TAG ?= latest
 OPERATOR_IMAGE_FULL_NAME ?= $(IMAGE_REPO)/$(OPERATOR_IMAGE_NAME):$(OPERATOR_IMAGE_TAG)
 OPERATOR_IMAGE ?= $(IMAGE_REGISTRY)/$(OPERATOR_IMAGE_FULL_NAME)
 
-PLUGIN_IMAGE_NAME ?= nmstate-console-plugin
-PLUGIN_IMAGE_TAG ?= latest
-PLUGIN_IMAGE_FULL_NAME ?= $(IMAGE_REPO)/$(PLUGIN_IMAGE_NAME):$(PLUGIN_IMAGE_TAG)
-PLUGIN_IMAGE ?= $(IMAGE_REGISTRY)/$(PLUGIN_IMAGE_FULL_NAME)
-
-# OpenShift image replacement uses the plain HANDLER_IMAGE variable rather
-# than operator-sdk's RELATED_IMAGE_* convention.
-HANDLER_IMAGE_ENV_VAR = HANDLER_IMAGE
+# Optional console plugin image (used by downstream distributions like
+# openshift/kubernetes-nmstate). Empty by default so no PLUGIN_IMAGE env is rendered.
+PLUGIN_IMAGE ?=
 
 export HANDLER_NAMESPACE ?= nmstate
 export OPERATOR_NAMESPACE ?= $(HANDLER_NAMESPACE)
@@ -62,7 +57,7 @@ export KUBEVIRT_NUM_SECONDARY_NICS ?= 2
 
 export E2E_TEST_TIMEOUT ?= 80m
 
-e2e_test_args = --vv -timeout=$(E2E_TEST_TIMEOUT) --slow-spec-threshold=60s $(E2E_TEST_ARGS)
+e2e_test_args = -vv --show-node-events -timeout=$(E2E_TEST_TIMEOUT) $(E2E_TEST_ARGS)
 
 ifeq ($(findstring k8s,$(KUBEVIRT_PROVIDER)),k8s)
 export PRIMARY_NIC ?= eth0
@@ -194,9 +189,6 @@ check-manifests: generate
 check-bundle: bundle
 	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
 
-check-ocp-bundle: ocp-update-bundle-manifests
-	git diff --exit-code -I'^    createdAt: ' -s || (echo "It seems like you need to run 'make bundle'. Please run it and commit the changes" && git diff && exit 1)
-
 generate: gen-k8s gen-crds gen-rbac
 
 manifests: $(HELM)
@@ -262,20 +254,6 @@ test-e2e-upgrade: manifests
 
 test-e2e: test-e2e-operator test-e2e-handler
 
-test-e2e-ocp: test-e2e-handler-ocp # deprecated. Use test-e2e-handler-ocp instead
-
-test-e2e-handler-ocp:
-	./hack/ocp-e2e-tests-handler.sh
-
-test-e2e-operator-ocp:
-	./hack/ocp-e2e-tests-operator.sh
-
-test-e2e-azure-ocp:
-	./hack/ocp-e2e-tests-azure.sh
-
-test-e2e-handler-cloud-ocp:
-	./hack/ocp-e2e-tests-cloud.sh
-
 cluster-up:
 	./cluster/up.sh
 
@@ -316,18 +294,6 @@ bundle: operator-sdk gen-crds manifests
 	cat $(MANIFEST_BASES_DIR)/kubernetes-nmstate-operator.clusterserviceversion.yaml | OPERATOR_IMAGE=$(OPERATOR_IMAGE) envsubst > $(HELM_RENDERED_MANIFESTS_DIR)/bases/kubernetes-nmstate-operator.clusterserviceversion.yaml
 	$(OPERATOR_SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS) --deploy-dir $(HELM_RENDERED_MANIFESTS_DIR) --crds-dir deploy/crds --output-dir $(BUNDLE_DIR) </dev/null
 	$(OPERATOR_SDK) bundle validate $(BUNDLE_DIR)
-
-# Update the OCP bundle manifests
-ocp-update-bundle-manifests: generate manifests
-	./hack/ocp-update-bundle-manifests.sh
-
-# Build and deploy the OCP bundle
-ocp-build-and-deploy-bundle: generate manifests
-	./hack/ocp-build-and-deploy-bundle.sh
-
-# Uninstall the bundle from "make ocp-build-and-deploy-bundle"
-ocp-uninstall-bundle:
-	./hack/ocp-uninstall-bundle.sh
 
 # Build the bundle image.
 bundle-build:
@@ -376,5 +342,10 @@ olm-push: bundle-push index-push
 	generate-manifests \
 	tools \
 	bundle \
-	bundle-build \
-	manifests
+	bundle-build
+
+# Optional project-level overrides. Downstream distributions (for example
+# openshift/kubernetes-nmstate) ship a Makefile.overrides with extra targets
+# and variable overrides so they do not need to patch this file. A missing
+# file is silently ignored (same pattern as istio and cilium).
+-include Makefile.overrides
