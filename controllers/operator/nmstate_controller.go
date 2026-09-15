@@ -27,6 +27,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -58,6 +59,12 @@ import (
 
 const (
 	nmstateOperatorFieldOwner = client.FieldOwner("nmstate-operator")
+
+	// The periodic resync interval.
+	// We will re-run the reconciliation logic, even if the NMState
+	// configuration hasn't changed. This ensures that externally
+	// modified resources (e.g. namespace annotations) are restored.
+	ResyncPeriod = 5 * time.Minute
 )
 
 // NMStateReconciler reconciles a NMState object
@@ -166,14 +173,20 @@ func (r *NMStateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	r.Log.Info("Reconcile complete.")
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: ResyncPeriod}, nil
 }
 
 func (r *NMStateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&nmstatev1.NMState{}).
 		Owns(&appsv1.Deployment{}).
-		Owns(&appsv1.DaemonSet{})
+		Owns(&appsv1.DaemonSet{}).
+		// Watch the handler namespace so that externally modified metadata
+		// (e.g. annotations) is restored without waiting for the periodic
+		// resync. The manager cache is restricted to the handler namespace
+		// for Namespace objects, but we filter here too in case that ever
+		// changes.
+		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(r.nmstateRequestsFromHandlerNamespace))
 
 	// On OpenShift, watch APIServer CR changes to detect TLS profile updates.
 	// This triggers a reconcile that updates the TLS ConfigMap and rolls
@@ -197,6 +210,25 @@ func (r *NMStateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return builder.Complete(r)
+}
+
+// nmstateRequestsFromHandlerNamespace maps events on the handler namespace to
+// reconcile requests for the deployed NMState CRs so that externally modified
+// namespace metadata (e.g. annotations) is restored.
+func (r *NMStateReconciler) nmstateRequestsFromHandlerNamespace(ctx context.Context, obj client.Object) []ctrl.Request {
+	if obj.GetName() != os.Getenv("HANDLER_NAMESPACE") {
+		return nil
+	}
+	nmstateList := &nmstatev1.NMStateList{}
+	if err := r.List(ctx, nmstateList); err != nil {
+		r.Log.Error(err, "failed listing NMState CRs to enqueue from namespace event")
+		return nil
+	}
+	requests := []ctrl.Request{}
+	for i := range nmstateList.Items {
+		requests = append(requests, ctrl.Request{NamespacedName: types.NamespacedName{Name: nmstateList.Items[i].Name}})
+	}
+	return requests
 }
 
 func (r *NMStateReconciler) applyManifests(instance *nmstatev1.NMState, ctx context.Context) error {
@@ -259,10 +291,10 @@ func (r *NMStateReconciler) applyNetworkPolicies(ctx context.Context, instance *
 
 func (r *NMStateReconciler) applyRBAC(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
 
 	if err := setClusterReaderExist(ctx, r.Client, data); err != nil {
 		return errors.Wrap(err, "failed checking if cluster-reader ClusterRole exists")
@@ -385,12 +417,11 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 		handlerReadinessProbeExtraArg = "-vv"
 	}
 
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
-	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
-	data.Data["KubeRBACProxyImage"] = os.Getenv("KUBE_RBAC_PROXY_IMAGE")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
+	data.Data["MonitoringNamespace"] = environment.GetEnvVar("MONITORING_NAMESPACE", "")
 	data.Data["InfraNodeSelector"] = infraNodeSelector
 	data.Data["InfraTolerations"] = infraTolerations
 	data.Data["WebhookAffinity"] = infraAffinity
