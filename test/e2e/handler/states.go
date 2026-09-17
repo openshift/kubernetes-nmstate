@@ -183,6 +183,84 @@ func ifaceUpWithStaticIP(iface, ipAddress, prefixLen string) nmstate.State {
 `, iface, ipAddress, prefixLen))
 }
 
+func ifaceUpWithDualStackStaticIP(iface, ipAddress, prefixLen, ipAddressV6, prefixLenV6 string) nmstate.State {
+	return nmstate.NewState(fmt.Sprintf(`interfaces:
+    - name: %s
+      type: ethernet
+      state: up
+      ipv4:
+        address:
+        - ip: %s
+          prefix-length: %s
+        dhcp: false
+        enabled: true
+      ipv6:
+        address:
+        - ip: %s
+          prefix-length: %s
+        dhcp: false
+        autoconf: false
+        enabled: true
+`, iface, ipAddress, prefixLen, ipAddressV6, prefixLenV6))
+}
+
+func routesOnlyOnIface(iface, dest, nextHop, destV6, nextHopV6 string) nmstate.State {
+	return nmstate.NewState(fmt.Sprintf(`routes:
+    config:
+    - destination: %s
+      metric: 150
+      next-hop-address: %s
+      next-hop-interface: %s
+      table-id: 254
+    - destination: %s
+      metric: 150
+      next-hop-address: %s
+      next-hop-interface: %s
+      table-id: 254
+`, dest, nextHop, iface, destV6, nextHopV6, iface))
+}
+
+func routesOnlyIPv4OnIface(iface, dest, nextHop string) nmstate.State {
+	return nmstate.NewState(fmt.Sprintf(`routes:
+    config:
+    - destination: %s
+      metric: 150
+      next-hop-address: %s
+      next-hop-interface: %s
+      table-id: 254
+`, dest, nextHop, iface))
+}
+
+func ifaceIPAndRoutesAbsent(iface string) nmstate.State {
+	return nmstate.NewState(fmt.Sprintf(`interfaces:
+  - name: %s
+    type: ethernet
+    state: up
+    ipv4:
+      enabled: false
+    ipv6:
+      enabled: false
+routes:
+    config:
+    - next-hop-interface: %s
+      state: absent
+`, iface, iface))
+}
+
+func dummyUpWithStaticIP(iface, ipAddress, prefixLen string) nmstate.State {
+	return nmstate.NewState(fmt.Sprintf(`interfaces:
+    - name: %s
+      type: dummy
+      state: up
+      ipv4:
+        address:
+        - ip: %s
+          prefix-length: %s
+        dhcp: false
+        enabled: true
+`, iface, ipAddress, prefixLen))
+}
+
 func ifaceUpWithStaticIPAbsent(firstSecondaryNic string) nmstate.State {
 	return nmstate.NewState(fmt.Sprintf(`interfaces:
   - name: %s
