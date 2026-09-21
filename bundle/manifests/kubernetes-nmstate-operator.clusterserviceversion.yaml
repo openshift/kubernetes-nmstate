@@ -9,15 +9,61 @@ metadata:
           "kind": "NMState",
           "metadata": {
             "name": "nmstate"
+          }
+        },
+        {
+          "apiVersion": "nmstate.io/v1",
+          "kind": "NodeNetworkConfigurationPolicy",
+          "metadata": {
+            "name": "example-nodenetworkconfigurationpolicy"
           },
-          "spec": {}
+          "spec": {
+            "desiredState": {
+              "interfaces": [
+                {
+                  "bridge": {
+                    "options": {
+                      "stp": {
+                        "enabled": false
+                      }
+                    },
+                    "port": [
+                      {
+                        "name": "eth1"
+                      }
+                    ]
+                  },
+                  "name": "br0",
+                  "state": "up",
+                  "type": "linux-bridge"
+                },
+                {
+                  "bridge": {
+                    "options": {
+                      "stp": {
+                        "enabled": false
+                      }
+                    },
+                    "port": [
+                      {
+                        "name": "eth2"
+                      }
+                    ]
+                  },
+                  "name": "br1",
+                  "state": "up",
+                  "type": "linux-bridge"
+                }
+              ]
+            }
+          }
         }
       ]
     capabilities: Basic Install
     categories: Networking
     certified: "false"
     containerImage: quay.io/nmstate/kubernetes-nmstate-operator:latest
-    createdAt: "2026-09-02T13:39:14Z"
+    createdAt: "2026-05-29T12:19:37Z"
     description: |
       Kubernetes NMState is a declaritive means of configuring NetworkManager.
     operatorframework.io/suggested-namespace: nmstate
@@ -322,14 +368,12 @@ spec:
                 - name: PROFILER_PORT
                   value: "6060"
                 - name: RUN_OPERATOR
-                - name: HANDLER_IMAGE
+                - name: RELATED_IMAGE_HANDLER_IMAGE
                   value: quay.io/nmstate/kubernetes-nmstate-handler:latest
                 - name: HANDLER_IMAGE_PULL_POLICY
                   value: IfNotPresent
                 - name: HANDLER_NAMESPACE
                   value: nmstate
-                - name: PLUGIN_IMAGE
-                  value: quay.io/nmstate/nmstate-console-plugin:latest
                 - name: MONITORING_NAMESPACE
                   value: monitoring
                 - name: OPERATOR_NAMESPACE
@@ -411,6 +455,9 @@ spec:
   maturity: alpha
   provider:
     name: NMState
+  relatedImages:
+  - image: quay.io/nmstate/kubernetes-nmstate-handler:latest
+    name: handler-image
   selector:
     matchLabels:
       name: kubernetes-nmstate-operator
