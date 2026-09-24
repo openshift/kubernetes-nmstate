@@ -219,8 +219,6 @@ spec:
                         valueFrom:
                           fieldRef:
                             fieldPath: metadata.namespace
-                      - name: KUBE_RBAC_PROXY_IMAGE
-                        value: quay.io/openshift/origin-kube-rbac-proxy:4.22
                     image: quay.io/openshift/origin-kubernetes-nmstate-operator:4.22
                     imagePullPolicy: IfNotPresent
                     livenessProbe:

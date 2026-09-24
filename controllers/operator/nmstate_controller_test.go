@@ -154,7 +154,6 @@ var _ = Describe("NMState controller reconcile", func() {
 		webhookKey          = types.NamespacedName{Namespace: handlerNamespace, Name: handlerPrefix + "-nmstate-webhook"}
 		handlerImage        = "quay.io/some_image"
 		monitoringNamespace = "monitoring"
-		kubeRBACProxyImage  = "quay.io/some_kube_rbac_proxy_image"
 		imagePullPolicy     = "Always"
 		manifestsDir        = ""
 		newNMState          = func() *nmstatev1.NMState {
@@ -217,7 +216,6 @@ var _ = Describe("NMState controller reconcile", func() {
 		os.Setenv("HANDLER_IMAGE_PULL_POLICY", imagePullPolicy)
 		os.Setenv("HANDLER_PREFIX", handlerPrefix)
 		os.Setenv("MONITORING_NAMESPACE", monitoringNamespace)
-		os.Setenv("KUBE_RBAC_PROXY_IMAGE", kubeRBACProxyImage)
 	})
 	AfterEach(func() {
 		err := os.RemoveAll(manifestsDir)
