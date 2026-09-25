@@ -331,10 +331,8 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 	}
 
 	logLevelHandlerCommandArg := ""
-	handlerReadinessProbeExtraArg := ""
 	if instance.Spec.LogLevel == shared.LogLevelDebug {
 		logLevelHandlerCommandArg = "debug"
-		handlerReadinessProbeExtraArg = "-vv"
 	}
 
 	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
@@ -355,7 +353,6 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 	data.Data["ProbeConfiguration"] = probeConfig
 	data.Data["MetricsConfiguration"] = metricsConfig
 	data.Data["LogLevelHandlerCommandArg"] = logLevelHandlerCommandArg
-	data.Data["HandlerReadinessProbeExtraArg"] = handlerReadinessProbeExtraArg
 	data.Data["IsOpenShift"] = r.IsOpenShift
 
 	return r.renderAndApply(ctx, instance, data, "handler", true)
