@@ -26,8 +26,6 @@ import (
 	"github.com/onsi/gomega/types"
 
 	nmstate "github.com/nmstate/kubernetes-nmstate/api/shared"
-
-	"github.com/nmstate/kubernetes-nmstate/test/environment"
 )
 
 func ethernetNicsState(states map[string]string) nmstate.State {
@@ -111,6 +109,29 @@ func linuxBrUpNoPorts(bridgeName string) nmstate.State {
 `, bridgeName))
 }
 
+func linuxBrUpWithSingleVlanPort(bridgeName string) nmstate.State {
+	return nmstate.NewState(fmt.Sprintf(`interfaces:
+  - name: %s
+    type: linux-bridge
+    state: up
+    bridge:
+      options:
+        stp:
+          enabled: false
+      port:
+        - name: %s
+          vlan:
+            mode: trunk
+            trunk-tags:
+              - id-range:
+                  min: 2
+                  max: 4094
+`, bridgeName, firstSecondaryNic))
+}
+
+// Use one port because kubevirtci connects each secondary NIC to a separate
+// network shared by all workers. Bridging both networks on multiple workers
+// with STP disabled creates a forwarding loop.
 func linuxBrUpWithDisabledVlan(bridgeName string) nmstate.State {
 	return nmstate.NewState(fmt.Sprintf(`interfaces:
   - name: %s
@@ -123,9 +144,7 @@ func linuxBrUpWithDisabledVlan(bridgeName string) nmstate.State {
       port:
         - name: %s
           vlan: {}
-        - name: %s
-          vlan: {}
-`, bridgeName, firstSecondaryNic, secondSecondaryNic))
+`, bridgeName, firstSecondaryNic))
 }
 
 func ovsBrAbsent(bridgeName string) nmstate.State {
@@ -289,9 +308,7 @@ func vlanUpWithStaticIP(iface, ipAddress string) nmstate.State {
 }
 
 func resetPrimaryAndSecondaryNICs() nmstate.State {
-	noAdditionalNICs := environment.GetVarWithDefault("ENV_WITH_ONLY_ONE_NIC", "FALSE")
-	if noAdditionalNICs == "FALSE" {
-		return nmstate.NewState(fmt.Sprintf(`interfaces:
+	return nmstate.NewState(fmt.Sprintf(`interfaces:
   - name: %s
     type: ethernet
     state: up
@@ -318,13 +335,6 @@ func resetPrimaryAndSecondaryNICs() nmstate.State {
       enabled: false
 
 `, primaryNic, firstSecondaryNic, secondSecondaryNic))
-	} else {
-		return nmstate.NewState(fmt.Sprintf(`interfaces:
-  - name: %s
-    type: ethernet
-    state: up
-`, primaryNic))
-	}
 }
 
 func bridgeOnTheSecondaryInterfaceState() nmstate.State {
