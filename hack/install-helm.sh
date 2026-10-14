@@ -26,12 +26,7 @@ curl -fsSL "${url}" -o "${tmpdir}/helm.tar.gz"
 curl -fsSL "${url}.sha256sum" -o "${tmpdir}/helm.tar.gz.sha256sum"
 (
     cd "${tmpdir}"
-    expected=$(awk '{print $1}' helm.tar.gz.sha256sum)
-    if command -v sha256sum >/dev/null; then
-        echo "${expected}  helm.tar.gz" | sha256sum -c -
-    else
-        [[ "$(shasum -a 256 helm.tar.gz | awk '{print $1}')" == "${expected}" ]]
-    fi
+    echo "$(awk '{print $1}' helm.tar.gz.sha256sum)  helm.tar.gz" | sha256sum -c -
 )
 tar -xzOf "${tmpdir}/helm.tar.gz" "${os}-${arch}/helm" > "${tmpdir}/helm"
 chmod +x "${tmpdir}/helm"
