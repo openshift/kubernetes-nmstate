@@ -5,7 +5,10 @@ type: docs
 ---
 
 kubernetes-nmstate can be installed with [Helm](https://helm.sh) (>= 3.8)
-from an OCI registry.
+from an OCI registry. Published chart versions and package details are
+available on
+[Artifact Hub](https://artifacthub.io/packages/helm/kubernetes-nmstate/kubernetes-nmstate).
+Use a chart version without a leading `v` for `<version>` in the commands below.
 
 kubernetes-nmstate is a cluster singleton: only one release of this chart per
 cluster is supported. The chart creates cluster-scoped resources with fixed
@@ -15,9 +18,8 @@ installing a second release would conflict with the first one.
 ## Install
 
 ```shell
-VERSION=v0.87.0
 helm install nmstate oci://quay.io/nmstate/kubernetes-nmstate \
-  --version "${VERSION#v}" \
+  --version <version> \
   --namespace nmstate \
   --create-namespace
 ```
@@ -33,6 +35,11 @@ namespace equals the release namespace, the operator labels the namespace
 for privileged workloads automatically.
 
 ## Values
+
+Helm validates chart values against the packaged `values.schema.json` schema.
+Use `--set-string` when a string value looks like a number or boolean, such as
+a numeric namespace name. Fields inside `nmstate.spec` are validated by the
+NMState CRD.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -52,13 +59,13 @@ for privileged workloads automatically.
 ## Upgrade
 
 Helm does not modify custom resource definitions shipped in the chart's
-`crds/` directory on upgrade. Apply the NMState CRD manually first:
+`crds/` directory on upgrade. Apply the NMState CRD manually first. GitHub
+release tags use a leading `v`, unlike Helm chart versions:
 
 ```shell
-VERSION=v0.87.0
-kubectl apply -f "https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/nmstate.io_nmstates.yaml"
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v<version>/nmstate.io_nmstates.yaml
 helm upgrade nmstate oci://quay.io/nmstate/kubernetes-nmstate \
-  --version "${VERSION#v}" \
+  --version <version> \
   --namespace nmstate
 ```
 
