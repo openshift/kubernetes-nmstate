@@ -37,6 +37,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -66,6 +67,11 @@ const (
 	// modified resources (e.g. namespace annotations) are restored.
 	ResyncPeriod = 5 * time.Minute
 )
+
+var obsoleteWebhooks = []string{
+	"nodenetworkconfigurationpolicies-update-validate.nmstate.io",
+	"nodenetworkconfigurationpolicies-create-validate.nmstate.io",
+}
 
 // NMStateReconciler reconciles a NMState object
 type NMStateReconciler struct {
@@ -291,10 +297,10 @@ func (r *NMStateReconciler) applyNetworkPolicies(ctx context.Context, instance *
 
 func (r *NMStateReconciler) applyRBAC(ctx context.Context, instance *nmstatev1.NMState) error {
 	data := render.MakeRenderData()
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
 
 	if err := setClusterReaderExist(ctx, r.Client, data); err != nil {
 		return errors.Wrap(err, "failed checking if cluster-reader ClusterRole exists")
@@ -415,12 +421,11 @@ func (r *NMStateReconciler) applyHandler(ctx context.Context, instance *nmstatev
 		logLevelHandlerCommandArg = "debug"
 	}
 
-	data.Data["HandlerNamespace"] = os.Getenv("HANDLER_NAMESPACE")
-	data.Data["HandlerImage"] = os.Getenv("HANDLER_IMAGE")
-	data.Data["HandlerPullPolicy"] = os.Getenv("HANDLER_IMAGE_PULL_POLICY")
-	data.Data["HandlerPrefix"] = os.Getenv("HANDLER_PREFIX")
-	data.Data["MonitoringNamespace"] = os.Getenv("MONITORING_NAMESPACE")
-	data.Data["KubeRBACProxyImage"] = os.Getenv("KUBE_RBAC_PROXY_IMAGE")
+	data.Data["HandlerNamespace"] = environment.GetEnvVar("HANDLER_NAMESPACE", "")
+	data.Data["HandlerImage"] = environment.GetEnvVar("RELATED_IMAGE_HANDLER_IMAGE", "")
+	data.Data["HandlerPullPolicy"] = environment.GetEnvVar("HANDLER_IMAGE_PULL_POLICY", "")
+	data.Data["HandlerPrefix"] = environment.GetEnvVar("HANDLER_PREFIX", "")
+	data.Data["MonitoringNamespace"] = environment.GetEnvVar("MONITORING_NAMESPACE", "")
 	data.Data["InfraNodeSelector"] = infraNodeSelector
 	data.Data["InfraTolerations"] = infraTolerations
 	data.Data["WebhookAffinity"] = infraAffinity
@@ -538,6 +543,38 @@ func (r *NMStateReconciler) cleanupObsoleteResources(ctx context.Context) error 
 			return fmt.Errorf("failed deleting old webhook secret at openshift: %w", err)
 		}
 	}
+	return r.cleanupObsoleteWebhooks(ctx)
+}
+
+// cleanupObsoleteWebhooks removes the validating webhooks that were replaced
+// by CRD CEL rules and a ValidatingAdmissionPolicy. Dropping them from the
+// manifest is not enough: on clusters where they were created before the
+// operator moved to server-side apply they are still owned by the old field
+// manager, so applying the manifest does not prune them and, since the webhook
+// server does not serve them anymore, every NNCP creation or update is rejected.
+func (r *NMStateReconciler) cleanupObsoleteWebhooks(ctx context.Context) error {
+	name := "nmstate"
+	if prefix := environment.GetEnvVar("HANDLER_PREFIX", ""); prefix != "" {
+		name = prefix + "-" + name
+	}
+	webhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{}
+	if err := r.APIClient.Get(ctx, types.NamespacedName{Name: name}, webhookConfiguration); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("failed getting webhook configuration %s: %w", name, err)
+	}
+	webhooks := slices.DeleteFunc(slices.Clone(webhookConfiguration.Webhooks), func(webhook admissionregistrationv1.MutatingWebhook) bool {
+		return slices.Contains(obsoleteWebhooks, webhook.Name)
+	})
+	if len(webhooks) == len(webhookConfiguration.Webhooks) {
+		return nil
+	}
+	webhookConfiguration.Webhooks = webhooks
+	if err := r.APIClient.Update(ctx, webhookConfiguration); err != nil {
+		return fmt.Errorf("failed removing obsolete webhooks from webhook configuration %s: %w", name, err)
+	}
+	r.Log.Info("Removed obsolete webhooks from webhook configuration", "name", name)
 	return nil
 }
 
