@@ -33,19 +33,6 @@ function clean() {
 }
 
 function clean_operator() {
-    if ! ${HELM} status "${HELM_RELEASE_NAME}" \
-        --kubeconfig "${KUBECONFIG}" \
-        --namespace "${OPERATOR_NAMESPACE}" >/dev/null 2>&1; then
-        # Remove resources from the legacy manifest-based deployment so Helm
-        # can take over without ownership conflicts on the first upgrade.
-        if $kubectl get crd nmstates.nmstate.io >/dev/null 2>&1; then
-            $kubectl delete nmstate nmstate --ignore-not-found
-        fi
-        $kubectl delete deployment,serviceaccount nmstate-operator \
-            --namespace "${OPERATOR_NAMESPACE}" --ignore-not-found
-        $kubectl delete clusterrole,clusterrolebinding nmstate-operator --ignore-not-found
-    fi
-
     ${HELM} uninstall "${HELM_RELEASE_NAME}" \
         --kubeconfig "${KUBECONFIG}" \
         --namespace "${OPERATOR_NAMESPACE}" \

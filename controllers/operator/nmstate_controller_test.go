@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +45,7 @@ import (
 	"github.com/nmstate/kubernetes-nmstate/api/shared"
 	nmstatev1 "github.com/nmstate/kubernetes-nmstate/api/v1"
 	nmstatev1beta1 "github.com/nmstate/kubernetes-nmstate/api/v1beta1"
+	nmstatetls "github.com/nmstate/kubernetes-nmstate/pkg/tls"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -212,7 +214,7 @@ var _ = Describe("NMState controller reconcile", func() {
 		reconciler.Log = ctrl.Log.WithName("controllers").WithName("NMState")
 		os.Setenv("HANDLER_NAMESPACE", handlerNamespace)
 		os.Setenv("OPERATOR_NAMESPACE", operatorNamespace)
-		os.Setenv("HANDLER_IMAGE", handlerImage)
+		os.Setenv("RELATED_IMAGE_HANDLER_IMAGE", handlerImage)
 		os.Setenv("HANDLER_IMAGE_PULL_POLICY", imagePullPolicy)
 		os.Setenv("HANDLER_PREFIX", handlerPrefix)
 		os.Setenv("MONITORING_NAMESPACE", monitoringNamespace)
@@ -245,6 +247,60 @@ var _ = Describe("NMState controller reconcile", func() {
 			)).To(Succeed())
 			Expect(recorder.forced).NotTo(BeEmpty(), "expected at least one SSA status patch")
 			Expect(recorder.forced).NotTo(ContainElement(false), "every status SSA patch must carry ForceOwnership")
+		})
+	})
+
+	Context("when the webhook configuration has obsolete validating webhooks", func() {
+		var (
+			webhookConfigurationKey = types.NamespacedName{Name: handlerPrefix + "-nmstate"}
+			newWebhook              = func(name string) admissionregistrationv1.MutatingWebhook {
+				sideEffects := admissionregistrationv1.SideEffectClassNone
+				path := "/" + name
+				return admissionregistrationv1.MutatingWebhook{
+					Name:                    name + ".nmstate.io",
+					AdmissionReviewVersions: []string{"v1"},
+					SideEffects:             &sideEffects,
+					ClientConfig: admissionregistrationv1.WebhookClientConfig{
+						Service: &admissionregistrationv1.ServiceReference{
+							Namespace: handlerNamespace,
+							Name:      webhookKey.Name,
+							Path:      &path,
+						},
+					},
+				}
+			}
+			webhookNames = func() []string {
+				webhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{}
+				Expect(cl.Get(context.Background(), webhookConfigurationKey, webhookConfiguration)).To(Succeed())
+				webhookNames := []string{}
+				for i := range webhookConfiguration.Webhooks {
+					webhookNames = append(webhookNames, webhookConfiguration.Webhooks[i].Name)
+				}
+				return webhookNames
+			}
+		)
+		BeforeEach(func() {
+			// Simulates a cluster upgraded from a version where the operator
+			// created the webhooks without server-side apply, so removing
+			// them from the applied manifest does not prune them.
+			Expect(cl.Create(context.Background(), &admissionregistrationv1.MutatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{Name: webhookConfigurationKey.Name},
+				Webhooks: []admissionregistrationv1.MutatingWebhook{
+					newWebhook("nodenetworkconfigurationpolicies-mutate"),
+					newWebhook("nodenetworkconfigurationpolicies-update-validate"),
+					newWebhook("nodenetworkconfigurationpolicies-create-validate"),
+				},
+			})).To(Succeed())
+		})
+		It("should remove only the obsolete webhooks", func() {
+			Expect(reconciler.cleanupObsoleteResources(context.Background())).To(Succeed())
+			Expect(webhookNames()).To(ConsistOf("nodenetworkconfigurationpolicies-mutate.nmstate.io"))
+		})
+		It("should succeed when the webhook configuration does not exist", func() {
+			Expect(cl.Delete(context.Background(), &admissionregistrationv1.MutatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{Name: webhookConfigurationKey.Name},
+			})).To(Succeed())
+			Expect(reconciler.cleanupObsoleteResources(context.Background())).To(Succeed())
 		})
 	})
 
@@ -527,6 +583,45 @@ var _ = Describe("NMState controller reconcile", func() {
 			err := cl.List(context.Background(), netpols, client.InNamespace(handlerNamespace))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(netpols.Items)).To(BeNumerically(">", 1))
+		})
+	})
+
+	Context("when the OpenShift console plugin is rendered", func() {
+		It("should reference the serving certificate and key through a constant map variable", func() {
+			pluginManifests, err := filepath.Glob("../../deploy/openshift/ui-plugin/*.yaml")
+			Expect(err).ToNot(HaveOccurred())
+			for _, manifest := range pluginManifests {
+				Expect(copyManifest(manifest, filepath.Join(manifestsDir, "kubernetes-nmstate", "openshift", "ui-plugin"))).To(Succeed())
+			}
+			nmstate := &nmstatev1.NMState{}
+			Expect(cl.Get(context.Background(), types.NamespacedName{Name: existingNMStateName}, nmstate)).To(Succeed())
+			profile := &operandTLSProfile{spec: *nmstatetls.TLSProfiles[nmstatetls.TLSProfileIntermediateType]}
+			Expect(reconciler.applyOpenshiftUIPlugin(context.Background(), nmstate, profile)).To(Succeed())
+
+			configMap := &corev1.ConfigMap{}
+			deployment := &appsv1.Deployment{}
+			Expect(cl.Get(context.Background(),
+				types.NamespacedName{Namespace: handlerNamespace, Name: "nmstate-console-plugin"}, deployment)).To(Succeed())
+			configMapKey := types.NamespacedName{Namespace: handlerNamespace}
+			for _, volume := range deployment.Spec.Template.Spec.Volumes {
+				if volume.Name == pluginNginxConfigName && volume.ConfigMap != nil {
+					configMapKey.Name = volume.ConfigMap.Name
+				}
+			}
+			Expect(configMapKey.Name).NotTo(BeEmpty())
+			Expect(cl.Get(context.Background(), configMapKey, configMap)).To(Succeed())
+			nginxConf := configMap.Data["nginx.conf"]
+
+			// nginx accepts map only in the http context. Allowing only lines
+			// without braces between "http {" and the map keeps it out of the top
+			// level and of nested blocks such as server. Anchoring directives at
+			// the line start keeps commented-out lines from matching, and no
+			// active certificate or key directive may use a literal path.
+			Expect(nginxConf).To(MatchRegexp(
+				`(?m)^http \{\n(?:[^{}\n]*\n)*\s*map "" \$plugin_certificate_dir \{\s*default /var/serving-cert;\s*\}`))
+			Expect(nginxConf).To(MatchRegexp(`(?m)^\s*ssl_certificate\s+\$plugin_certificate_dir/tls\.crt;`))
+			Expect(nginxConf).To(MatchRegexp(`(?m)^\s*ssl_certificate_key\s+\$plugin_certificate_dir/tls\.key;`))
+			Expect(nginxConf).NotTo(MatchRegexp(`(?m)^\s*ssl_certificate(_key)?\s+[^$\s]`))
 		})
 	})
 
