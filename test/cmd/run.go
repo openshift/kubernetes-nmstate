@@ -20,6 +20,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -27,7 +28,12 @@ import (
 )
 
 func Run(command string, quiet bool, arguments ...string) (string, error) {
+	return run(nil, command, quiet, arguments...)
+}
+
+func run(stdin io.Reader, command string, quiet bool, arguments ...string) (string, error) {
 	cmd := exec.Command(command, arguments...)
+	cmd.Stdin = stdin
 	if !quiet {
 		GinkgoWriter.Write([]byte(command + " " + strings.Join(arguments, " ") + "\n"))
 	}

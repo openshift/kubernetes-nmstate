@@ -18,6 +18,7 @@ limitations under the License.
 package handler
 
 import (
+	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -43,6 +44,7 @@ var _ = Describe("OVN-Kubernetes EgressIP IFA_PROTO", func() {
 
 	var (
 		node         string
+		probe        kernelAddrProbe
 		hadLabel     bool
 		labeled      bool
 		dummyCreated bool
@@ -50,9 +52,10 @@ var _ = Describe("OVN-Kubernetes EgressIP IFA_PROTO", func() {
 		eipCreated   bool
 	)
 
-	BeforeEach(func() {
+	BeforeEach(func(ctx SpecContext) {
 		skipUnlessEgressIPCRD()
 		node = nodes[0]
+		probe = installKernelAddrProbe(ctx, node)
 		hadLabel = setEgressAssignableLabel(node)
 		labeled = true
 
@@ -72,19 +75,17 @@ var _ = Describe("OVN-Kubernetes EgressIP IFA_PROTO", func() {
 		eipCreated = true
 		waitForEgressIPAssignedOrSkip(egressIPName, egressIPAddr, node)
 
-		info := waitForKernelAddrOnIface(node, egressIPAddr, dummyName)
-		if info.Protocol == "" {
-			Skip("IFA_PROTO not reported for EgressIP; kernel may be older than 5.18")
+		info := waitForKernelAddrOnIface(probe, node, egressIPAddr, dummyName)
+		if info.Protocol == nil {
+			Skip(fmt.Sprintf("kernel did not return IFA_PROTO for EgressIP %s on %s/%s", egressIPAddr, node, dummyName))
 		}
-		Expect(normalizeAddrProtocol(info.Protocol)).To(Equal(ifaProtOVNKHex))
+		Expect(info.Protocol).To(HaveValue(Equal(ifaProtOVNK)))
 	})
 
 	AfterEach(func() {
-		if node != "" {
-			cleanupEgressIP(node, dummyName, egressIPName, egressIPAddr, managedNMAddrs, eipCreated)
-			eipCreated = false
-		}
 		if dummyCreated {
+			cleanupEgressIP(probe, node, dummyName, egressIPName, egressIPAddr, managedNMAddrs, eipCreated)
+			eipCreated = false
 			updateDesiredStateAtNodeAndWait(node, interfaceAbsent(dummyName))
 			waitForInterfaceDeletion([]string{node}, dummyName)
 			dummyCreated = false
@@ -108,8 +109,8 @@ var _ = Describe("OVN-Kubernetes EgressIP IFA_PROTO", func() {
 			g.Expect(assignedNode).To(Equal(node), "EgressIP should stay assigned to the egress-assignable node")
 			g.Expect(assignedIP).To(Equal(egressIPAddr))
 		}, ReadTimeout, ReadInterval).Should(Succeed())
-		info := waitForKernelAddrOnIface(node, egressIPAddr, dummyName)
-		Expect(normalizeAddrProtocol(info.Protocol)).To(Equal(ifaProtOVNKHex))
+		info := waitForKernelAddrOnIface(probe, node, egressIPAddr, dummyName)
+		Expect(info.Protocol).To(HaveValue(Equal(ifaProtOVNK)))
 
 		ipv4NM := nmDeviceAddresses(node, dummyName, "ipv4")
 		Expect(ipv4NM).To(ContainSubstring(dummyIP))
@@ -119,7 +120,7 @@ var _ = Describe("OVN-Kubernetes EgressIP IFA_PROTO", func() {
 	})
 })
 
-func cleanupEgressIP(node, dummyName, eipName, eipAddr, managedAddrs string, eipCreated bool) {
+func cleanupEgressIP(probe kernelAddrProbe, node, dummyName, eipName, eipAddr, managedAddrs string, eipCreated bool) {
 	GinkgoHelper()
 	if eipCreated {
 		deleteEgressIP(eipName)
@@ -129,8 +130,8 @@ func cleanupEgressIP(node, dummyName, eipName, eipAddr, managedAddrs string, eip
 	}
 	deleteKernelAddr(node, dummyName, eipAddr+"/32")
 	deleteKernelAddr(node, dummyName, eipAddr+"/24")
-	Eventually(func() string {
-		info, _ := lookupKernelAddr(node, eipAddr)
-		return info.Local
-	}, ReadTimeout, ReadInterval).Should(BeEmpty())
+	Eventually(func() (bool, error) {
+		info, err := probe.lookup(eipAddr, "")
+		return info.Found, err
+	}, ReadTimeout, ReadInterval).Should(BeFalse(), "address %s should be absent from %s", eipAddr, node)
 }

@@ -21,6 +21,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,30 +34,25 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 
 	nmstate "github.com/nmstate/kubernetes-nmstate/api/shared"
+	"github.com/nmstate/kubernetes-nmstate/test/cmd"
 	testenv "github.com/nmstate/kubernetes-nmstate/test/env"
 	"github.com/nmstate/kubernetes-nmstate/test/environment"
 	"github.com/nmstate/kubernetes-nmstate/test/runner"
 )
 
 const (
-	ifaProtOVNK              = "85"
-	ifaProtOVNKHex           = "0x55"
-	ovnHostCIDRsAnnotation   = "k8s.ovn.org/host-cidrs"
-	ovnEgressAssignableLabel = "k8s.ovn.org/egress-assignable"
-	egressIPGroupVersion     = "k8s.ovn.org/v1"
-	egressIPKind             = "EgressIP"
+	ifaProtOVNK              uint8 = 0x55
+	ovnHostCIDRsAnnotation         = "k8s.ovn.org/host-cidrs"
+	ovnEgressAssignableLabel       = "k8s.ovn.org/egress-assignable"
+	egressIPGroupVersion           = "k8s.ovn.org/v1"
+	egressIPKind                   = "EgressIP"
 )
-
-type kernelAddr struct {
-	IfName   string
-	Local    string
-	Protocol string
-}
 
 func dummyUpWithStaticIP(iface, ipAddress, prefixLen string) nmstate.State {
 	return nmstate.NewState(fmt.Sprintf(`interfaces:
@@ -87,54 +85,90 @@ func deleteKernelAddr(node, iface, cidr string) {
 	_, _ = runner.RunAtNode(node, "sudo", "ip", "addr", "del", cidr, "dev", iface)
 }
 
-func lookupKernelAddr(node, ip string) (kernelAddr, error) {
-	output, err := runner.RunAtNode(node, "sudo", "ip", "-d", "-j", "addr", "show", "to", ip)
+type kernelAddrProbe struct {
+	pod  string
+	path string
+}
+
+type kernelAddr struct {
+	Found    bool   `json:"found"`
+	Protocol *uint8 `json:"protocol"`
+}
+
+func installKernelAddrProbe(ctx context.Context, node string) kernelAddrProbe {
+	GinkgoHelper()
+	pods, err := testenv.KubeClient.CoreV1().Pods(testenv.OperatorNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "component=kubernetes-nmstate-handler",
+		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", node).String(),
+	})
+	Expect(err).To(Succeed())
+
+	// The handler pod shares the node's network namespace.
+	probe := kernelAddrProbe{}
+	for _, pod := range pods.Items {
+		if pod.Spec.HostNetwork && pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil {
+			probe.pod = pod.Name
+			break
+		}
+	}
+	Expect(probe.pod).NotTo(BeEmpty(), "expected a running host-network handler pod on %s", node)
+
+	worker, err := testenv.KubeClient.CoreV1().Nodes().Get(ctx, node, metav1.GetOptions{})
+	Expect(err).To(Succeed())
+	binary := filepath.Join(GinkgoT().TempDir(), "ifa-proto")
+	build := exec.CommandContext(ctx, "go", "build", "-o", binary, "./test/cmd/ifa-proto")
+	build.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+worker.Status.NodeInfo.Architecture, "CGO_ENABLED=0")
+	output, err := build.CombinedOutput()
+	Expect(err).To(Succeed(), "building the address probe: %s", output)
+
+	path, err := cmd.Kubectl(probe.execArgs(false, "mktemp", "/tmp/knmstate-ifa-proto.XXXXXXXXXX")...)
+	Expect(err).To(Succeed())
+	probe.path = strings.TrimSpace(path)
+	DeferCleanup(func() error {
+		_, removeErr := cmd.Kubectl(probe.execArgs(false, "rm", "-f", "--", probe.path)...)
+		return removeErr
+	})
+
+	file, err := os.Open(binary)
+	Expect(err).To(Succeed())
+	defer file.Close()
+	_, err = cmd.KubectlWithStdin(file, probe.execArgs(true, "sh", "-c", `cat > "$1" && chmod 700 "$1"`, "sh", probe.path)...)
+	Expect(err).To(Succeed())
+	return probe
+}
+
+func (p kernelAddrProbe) execArgs(stdin bool, command ...string) []string {
+	args := []string{"exec", "-n", testenv.OperatorNamespace, p.pod, "-c", "nmstate-handler"}
+	if stdin {
+		args = append(args, "-i")
+	}
+	return append(append(args, "--"), command...)
+}
+
+func (p kernelAddrProbe) lookup(ip, iface string) (kernelAddr, error) {
+	command := []string{p.path, ip}
+	if iface != "" {
+		command = append(command, iface)
+	}
+	output, err := cmd.Kubectl(p.execArgs(false, command...)...)
 	if err != nil {
 		return kernelAddr{}, err
 	}
-
-	type ipAddrInfo struct {
-		Local    string `json:"local"`
-		Protocol string `json:"protocol"`
-	}
-	type ipAddrEntry struct {
-		IfName   string       `json:"ifname"`
-		AddrInfo []ipAddrInfo `json:"addr_info"`
-	}
-	var entries []ipAddrEntry
-	if unmarshalErr := json.Unmarshal([]byte(strings.TrimSpace(output)), &entries); unmarshalErr != nil {
-		return kernelAddr{}, unmarshalErr
-	}
-	for _, entry := range entries {
-		for _, info := range entry.AddrInfo {
-			if info.Local == ip {
-				return kernelAddr{IfName: entry.IfName, Local: info.Local, Protocol: info.Protocol}, nil
-			}
-		}
-	}
-	return kernelAddr{}, nil
+	var addr kernelAddr
+	err = json.Unmarshal([]byte(output), &addr)
+	return addr, err
 }
 
-func waitForKernelAddrOnIface(node, ip, iface string) kernelAddr {
+func waitForKernelAddrOnIface(probe kernelAddrProbe, node, ip, iface string) kernelAddr {
 	GinkgoHelper()
 	var info kernelAddr
 	Eventually(func(g Gomega) {
 		var err error
-		info, err = lookupKernelAddr(node, ip)
+		info, err = probe.lookup(ip, iface)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(info.Local).To(Equal(ip), "address %s should be present on %s", ip, node)
-		g.Expect(info.IfName).To(Equal(iface))
+		g.Expect(info.Found).To(BeTrue(), "address %s should be present on %s/%s", ip, node, iface)
 	}, ReadTimeout, ReadInterval).Should(Succeed())
 	return info
-}
-
-func normalizeAddrProtocol(protocol string) string {
-	switch protocol {
-	case ifaProtOVNK, ifaProtOVNKHex:
-		return ifaProtOVNKHex
-	default:
-		return protocol
-	}
 }
 
 func nmDeviceConnection(node, iface string) string {
