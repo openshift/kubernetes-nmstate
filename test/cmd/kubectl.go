@@ -18,10 +18,16 @@ limitations under the License.
 package cmd
 
 import (
+	"io"
+
 	"github.com/nmstate/kubernetes-nmstate/test/environment"
 )
 
 func Kubectl(arguments ...string) (string, error) {
+	return KubectlWithStdin(nil, arguments...)
+}
+
+func KubectlWithStdin(stdin io.Reader, arguments ...string) (string, error) {
 	kubectl := environment.GetVarWithDefault("KUBECTL", "./cluster/kubectl.sh")
-	return Run(kubectl, false, arguments...)
+	return run(stdin, kubectl, false, arguments...)
 }
